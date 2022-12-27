@@ -232,16 +232,17 @@
    "type": "Link"
   }
  ],
- "modified": "2022-01-13 17:49:41.527194",
+ "modified": "2022-12-20 14:27:01.384599",
  "modified_by": "Administrator",
  "module": "Website",
  "name": "Website",
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
+ "quick_lists": [],
  "restrict_to_domain": "",
  "roles": [],
- "sequence_id": 28.0,
+ "sequence_id": 34.0,
  "shortcuts": [
   {
    "color": "Green",
