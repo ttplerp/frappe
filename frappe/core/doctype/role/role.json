@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_import": 1,
  "allow_rename": 1,
  "autoname": "field:role_name",
  "creation": "2013-01-08 15:50:01",
@@ -148,7 +149,7 @@
  "idx": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2022-08-05 18:33:27.694065",
+ "modified": "2022-12-28 14:30:47.199757",
  "modified_by": "Administrator",
  "module": "Core",
  "name": "Role",
