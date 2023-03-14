@@ -291,6 +291,7 @@ def get_group_by_chart_config(chart, filters):
 		group_by=group_by_field,
 		order_by="count desc",
 		ignore_ifnull=True,
+		ignore_permissions=True,
 	)
 
 	if data:
