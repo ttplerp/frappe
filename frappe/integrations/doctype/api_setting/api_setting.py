@@ -14,8 +14,7 @@ class APISetting(Document):
 	@frappe.whitelist()
 	def generate_token(self):
 		url = self.url
-
-		bearer_token = self.generate_bearer_token(self.username, self.password)
+		bearer_token = self.generate_bearer_token(self.username, self.get_password())
 		if bearer_token:
 			self.db_set("bearer_token", bearer_token)
 
@@ -25,7 +24,6 @@ class APISetting(Document):
 		credentials = f'{username}:{password}'
 		encoded_credentials = credentials.encode('utf-8')
 		base64_credentials = base64.b64encode(encoded_credentials).decode('utf-8')
-		frappe.throw("{} and {} Hello {} and {}".format(username, password, base64_credentials, url))
 
 		headers = {
 			'Authorization': f'Basic {base64_credentials}',
