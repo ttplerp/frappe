@@ -21,11 +21,11 @@ class APISetting(Document):
 
 	def generate_bearer_token(self, username, password):
 		url = self.url
-
+		
 		credentials = f'{username}:{password}'
 		encoded_credentials = credentials.encode('utf-8')
 		base64_credentials = base64.b64encode(encoded_credentials).decode('utf-8')
-		frappe.throw("Hello {} and {}".format(base64_credentials, url))
+		frappe.throw("{} and {} Hello {} and {}".format(username, password, base64_credentials, url))
 
 		headers = {
 			'Authorization': f'Basic {base64_credentials}',
