@@ -14,12 +14,14 @@ class APISetting(Document):
 	@frappe.whitelist()
 	def generate_token(self):
 		url = self.url
-		bearer_token = self.generate_bearer_token(self.username, self.get_password())
+		bearer_token = self.generate_bearer_token()
 		if bearer_token:
 			self.db_set("bearer_token", bearer_token)
 
-	def generate_bearer_token(self, username, password):
+	def generate_bearer_token(self):
 		url = self.url
+		username=self.username
+		password=self.get_password()
 		
 		credentials = f'{username}:{password}'
 		encoded_credentials = credentials.encode('utf-8')
