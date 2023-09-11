@@ -118,7 +118,7 @@ def get_letter_heads():
 def load_conf_settings(bootinfo):
 	from frappe import conf
 
-	bootinfo.max_file_size = conf.get("max_file_size") or 10485760
+	bootinfo.max_file_size = conf.get("max_file_size") or 2097152
 	for key in ("developer_mode", "socketio_port", "file_watcher_port"):
 		if key in conf:
 			bootinfo[key] = conf.get(key)
