@@ -23,7 +23,7 @@ no_cache = True
 
 def get_context(context):
     redirect_to = frappe.local.request.args.get("redirect-to")
-
+    # changes
     if frappe.session.user != "Guest":
         if not redirect_to:
             if frappe.session.data.user_type == "Website User":
