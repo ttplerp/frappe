@@ -15,9 +15,13 @@ from typing import Any, Literal, Optional, TypeVar, Union
 from urllib.parse import quote, urljoin
 
 from click import secho
+from dateutil import parser
+from dateutil.parser import ParserError
+from dateutil.relativedelta import relativedelta
 
 import frappe
 from frappe.desk.utils import slug
+from frappe.utils.deprecations import deprecation_warning
 
 DateTimeLikeObject = Union[str, datetime.date, datetime.datetime]
 NumericType = Union[int, float]
@@ -45,6 +49,7 @@ URL_NOTATION_PATTERN = re.compile(
 )  # background-image: url('/assets/...')
 DURATION_PATTERN = re.compile(r"^(?:(\d+d)?((^|\s)\d+h)?((^|\s)\d+m)?((^|\s)\d+s)?)$")
 HTML_TAG_PATTERN = re.compile("<[^>]+>")
+MARIADB_SPECIFIC_COMMENT = re.compile(r"#.*")
 
 
 class Weekday(Enum):
@@ -72,14 +77,13 @@ def is_invalid_date_string(date_string: str) -> bool:
 	)
 
 
-def getdate(string_date: Optional["DateTimeLikeObject"] = None) -> datetime.date | None:
+def getdate(
+	string_date: Optional["DateTimeLikeObject"] = None, parse_day_first: bool = False
+) -> datetime.date | None:
 	"""
 	Converts string date (yyyy-mm-dd) to datetime.date object.
 	If no input is provided, current date is returned.
 	"""
-	from dateutil import parser
-	from dateutil.parser._parser import ParserError
-
 	if not string_date:
 		return get_datetime().date()
 	if isinstance(string_date, datetime.datetime):
@@ -91,7 +95,7 @@ def getdate(string_date: Optional["DateTimeLikeObject"] = None) -> datetime.date
 	if is_invalid_date_string(string_date):
 		return None
 	try:
-		return parser.parse(string_date).date()
+		return parser.parse(string_date, dayfirst=parse_day_first).date()
 	except ParserError:
 		frappe.throw(
 			frappe._("{} is not a valid date string.").format(frappe.bold(string_date)),
@@ -102,7 +106,6 @@ def getdate(string_date: Optional["DateTimeLikeObject"] = None) -> datetime.date
 def get_datetime(
 	datetime_str: Optional["DateTimeLikeObject"] = None,
 ) -> datetime.datetime | None:
-	from dateutil import parser
 
 	if datetime_str is None:
 		return now_datetime()
@@ -138,9 +141,6 @@ def get_timedelta(time: str | None = None) -> datetime.timedelta | None:
 	Returns:
 	        datetime.timedelta: Timedelta object equivalent of the passed `time` string
 	"""
-	from dateutil import parser
-	from dateutil.parser import ParserError
-
 	time = time or "0:0:0"
 
 	try:
@@ -158,8 +158,6 @@ def get_timedelta(time: str | None = None) -> datetime.timedelta | None:
 
 
 def to_timedelta(time_str: str | datetime.time) -> datetime.timedelta:
-	from dateutil import parser
-
 	if isinstance(time_str, datetime.time):
 		time_str = str(time_str)
 
@@ -234,9 +232,6 @@ def add_to_date(
 	as_datetime=False,
 ) -> DateTimeLikeObject:
 	"""Adds `days` to the given date"""
-	from dateutil import parser
-	from dateutil.parser._parser import ParserError
-	from dateutil.relativedelta import relativedelta
 
 	if date is None:
 		date = now_datetime()
@@ -301,7 +296,7 @@ def time_diff_in_hours(string_ed_date, string_st_date):
 
 
 def now_datetime():
-	dt = convert_utc_to_user_timezone(datetime.datetime.utcnow())
+	dt = convert_utc_to_system_timezone(datetime.datetime.utcnow())
 	return dt.replace(tzinfo=None)
 
 
@@ -314,15 +309,22 @@ def get_eta(from_time, percent_complete):
 	return str(datetime.timedelta(seconds=(100 - percent_complete) / percent_complete * diff))
 
 
-def _get_time_zone():
+def _get_system_timezone():
 	return frappe.db.get_system_setting("time_zone") or "Asia/Kolkata"  # Default to India ?!
 
 
-def get_time_zone():
+def get_system_timezone():
 	if frappe.local.flags.in_test:
-		return _get_time_zone()
+		return _get_system_timezone()
 
-	return frappe.cache().get_value("time_zone", _get_time_zone)
+	return frappe.cache().get_value("time_zone", _get_system_timezone)
+
+
+def get_time_zone():
+	deprecation_warning(
+		"`get_time_zone` is deprecated and will be removed in version 15. Use `get_system_timezone` instead."
+	)
+	return get_system_timezone()
 
 
 def convert_utc_to_timezone(utc_timestamp, time_zone):
@@ -340,9 +342,16 @@ def get_datetime_in_timezone(time_zone):
 	return convert_utc_to_timezone(utc_timestamp, time_zone)
 
 
-def convert_utc_to_user_timezone(utc_timestamp):
-	time_zone = get_time_zone()
+def convert_utc_to_system_timezone(utc_timestamp):
+	time_zone = get_system_timezone()
 	return convert_utc_to_timezone(utc_timestamp, time_zone)
+
+
+def convert_utc_to_user_timezone(utc_timestamp):
+	deprecation_warning(
+		"`convert_utc_to_user_timezone` is deprecated and will be removed in version 15. Use `convert_utc_to_system_timezone` instead."
+	)
+	return convert_utc_to_system_timezone(utc_timestamp)
 
 
 def now() -> str:
@@ -493,9 +502,6 @@ def get_year_ending(date):
 
 
 def get_time(time_str: str) -> datetime.time:
-	from dateutil import parser
-	from dateutil.parser import ParserError
-
 	if isinstance(time_str, datetime.datetime):
 		return time_str.time()
 	elif isinstance(time_str, datetime.time):
@@ -550,7 +556,9 @@ def get_user_time_format() -> str:
 	return frappe.local.user_time_format or "HH:mm:ss"
 
 
-def format_date(string_date=None, format_string: str | None = None) -> str:
+def format_date(
+	string_date=None, format_string: str | None = None, parse_day_first: bool = False
+) -> str:
 	"""Converts the given string date to :data:`user_date_format`
 	User format specified in defaults
 
@@ -566,7 +574,7 @@ def format_date(string_date=None, format_string: str | None = None) -> str:
 	if not string_date:
 		return ""
 
-	date = getdate(string_date)
+	date = getdate(string_date, parse_day_first)
 	if not format_string:
 		format_string = get_user_date_format()
 	format_string = format_string.replace("mm", "MM").replace("Y", "y")
@@ -893,7 +901,9 @@ def flt(s: NumericType | str, precision: int | None = None) -> float:
 	...
 
 
-def flt(s: NumericType | str, precision: int | None = None) -> float:
+def flt(
+	s: NumericType | str, precision: int | None = None, rounding_method: str | None = None
+) -> float:
 	"""Convert to float (ignoring commas in string)
 
 	:param s: Number in string or other numeric format.
@@ -919,8 +929,10 @@ def flt(s: NumericType | str, precision: int | None = None) -> float:
 	try:
 		num = float(s)
 		if precision is not None:
-			num = rounded(num, precision)
-	except Exception:
+			num = rounded(num, precision, rounding_method)
+	except Exception as e:
+		if isinstance(e, frappe.InvalidRoundingMethod):
+			raise
 		num = 0.0
 
 	return num
@@ -1019,12 +1031,30 @@ def sbool(x: str) -> bool | Any:
 		return x
 
 
-def rounded(num, precision=0):
-	"""round method for round halfs to nearest even algorithm aka banker's rounding - compatible with python3"""
+def rounded(num, precision=0, rounding_method=None):
+	"""Round according to method set in system setting, defaults to banker's rounding"""
 	precision = cint(precision)
-	multiplier = 10**precision
 
+	rounding_method = (
+		rounding_method or frappe.get_system_settings("rounding_method") or "Banker's Rounding (legacy)"
+	)
+
+	if rounding_method == "Banker's Rounding (legacy)":
+		return _bankers_rounding_legacy(num, precision)
+	elif rounding_method == "Banker's Rounding":
+		return _bankers_rounding(num, precision)
+	elif rounding_method == "Commercial Rounding":
+		return _round_away_from_zero(num, precision)
+	else:
+		frappe.throw(
+			frappe._("Unknown Rounding Method: {}").format(rounding_method),
+			exc=frappe.InvalidRoundingMethod,
+		)
+
+
+def _bankers_rounding_legacy(num, precision):
 	# avoid rounding errors
+	multiplier = 10**precision
 	num = round(num * multiplier if precision else num, 8)
 
 	floor_num = math.floor(num)
@@ -1039,6 +1069,51 @@ def rounded(num, precision=0):
 			num = round(num)
 
 	return (num / multiplier) if precision else num
+
+
+def _round_away_from_zero(num, precision):
+	if num == 0:
+		return 0.0
+
+	# Epsilon is small correctional value added to correctly round numbers which can't be
+	# represented in IEEE 754 representation.
+
+	# In simplified terms, the representation optimizes for absolute errors in representation
+	# so if a number is not representable it might be represented by a value ever so slighly
+	# smaller than the value itself. This becomes a problem when breaking ties for numbers
+	# ending with 5 when it's represented by a smaller number. By adding a very small value
+	# close to what's "least count" or smallest representable difference in the scale we force
+	# the number to be bigger than actual value, this increases representation error but
+	# removes rounding error.
+
+	# References:
+	# - https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
+	# - https://docs.python.org/3/tutorial/floatingpoint.html#representation-error
+	# - https://docs.python.org/3/library/functions.html#round
+	# - easier to understand: https://www.youtube.com/watch?v=pQs_wx8eoQ8
+
+	epsilon = 2.0 ** (math.log(abs(num), 2) - 52.0)
+
+	return round(num + math.copysign(epsilon, num), precision)
+
+
+def _bankers_rounding(num, precision):
+	multiplier = 10**precision
+	num = round(num * multiplier, 12)
+
+	if num == 0:
+		return 0.0
+
+	floor_num = math.floor(num)
+	decimal_part = num - floor_num
+
+	epsilon = 2.0 ** (math.log(abs(num), 2) - 52.0)
+	if abs(decimal_part - 0.5) < epsilon:
+		num = floor_num if (floor_num % 2 == 0) else floor_num + 1
+	else:
+		num = round(num)
+
+	return num / multiplier
 
 
 def remainder(numerator: NumericType, denominator: NumericType, precision: int = 2) -> NumericType:
@@ -1165,7 +1240,7 @@ def fmt_money(
 	if flt(amount) < 0:
 		minus = "-"
 
-	amount = cstr(abs(flt(amount))).split(".")[0]
+	amount = cstr(abs(flt(amount))).split(".", 1)[0]
 
 	if len(amount) > 3:
 		parts.append(amount[-3:])
@@ -1322,7 +1397,7 @@ def is_image(filepath: str) -> bool:
 	from mimetypes import guess_type
 
 	# filepath can be https://example.com/bed.jpg?v=129
-	filepath = (filepath or "").split("?")[0]
+	filepath = (filepath or "").split("?", 1)[0]
 	return (guess_type(filepath)[0] or "").startswith("image/")
 
 
@@ -1457,15 +1532,15 @@ def pretty_date(iso_datetime: datetime.datetime | str) -> str:
 		return _("Yesterday")
 	elif dt_diff_days < 7.0:
 		return _("{0} days ago").format(cint(dt_diff_days))
-	elif dt_diff_days < 12:
+	elif dt_diff_days < 14:
 		return _("1 week ago")
 	elif dt_diff_days < 31.0:
-		return _("{0} weeks ago").format(cint(math.ceil(dt_diff_days / 7.0)))
-	elif dt_diff_days < 46:
+		return _("{0} weeks ago").format(dt_diff_days // 7)
+	elif dt_diff_days < 61.0:
 		return _("1 month ago")
 	elif dt_diff_days < 365.0:
-		return _("{0} months ago").format(cint(math.ceil(dt_diff_days / 30.0)))
-	elif dt_diff_days < 550.0:
+		return _("{0} months ago").format(dt_diff_days // 30)
+	elif dt_diff_days < 730.0:
 		return _("1 year ago")
 	else:
 		return f"{cint(math.floor(dt_diff_days / 365.0))} years ago"
@@ -1646,9 +1721,9 @@ def get_url_to_report(name, report_type: str | None = None, doctype: str | None 
 
 def get_url_to_report_with_filters(name, filters, report_type=None, doctype=None):
 	if report_type == "Report Builder":
-		return get_url(uri=f"/app/{quoted(doctype)}/view/report?{filters}")
-	else:
-		return get_url(uri=f"/app/query-report/{quoted(name)}?{filters}")
+		return get_url(uri=f"/app/{quoted(slug(doctype))}/view/report?{filters}")
+
+	return get_url(uri=f"/app/query-report/{quoted(name)}?{filters}")
 
 
 operator_map = {
@@ -1689,6 +1764,7 @@ def evaluate_filters(doc, filters: dict | list | tuple):
 def compare(val1: Any, condition: str, val2: Any, fieldtype: str | None = None):
 	ret = False
 	if fieldtype:
+		val1 = cast(fieldtype, val1)
 		val2 = cast(fieldtype, val2)
 	if condition in operator_map:
 		ret = operator_map[condition](val1, val2)
@@ -1809,8 +1885,11 @@ def sanitize_column(column_name: str) -> None:
 
 	from frappe import _
 
-	regex = re.compile("^.*[,'();].*")
 	column_name = sqlparse.format(column_name, strip_comments=True, keyword_case="lower")
+	if frappe.db and frappe.db.db_type == "mariadb":
+		# strip mariadb specific comments which are like python single line comments
+		column_name = MARIADB_SPECIFIC_COMMENT.sub("", column_name)
+
 	blacklisted_keywords = [
 		"select",
 		"create",
@@ -1826,6 +1905,7 @@ def sanitize_column(column_name: str) -> None:
 	def _raise_exception():
 		frappe.throw(_("Invalid field name {0}").format(column_name), frappe.DataError)
 
+	regex = re.compile("^.*[,'();].*")
 	if "ifnull" in column_name:
 		if regex.match(column_name):
 			# to avoid and, or
@@ -1856,7 +1936,7 @@ def expand_relative_urls(html: str) -> str:
 	def _expand_relative_urls(match):
 		to_expand = list(match.groups())
 
-		if not to_expand[2].startswith("mailto") and not to_expand[2].startswith("data:"):
+		if not to_expand[2].startswith(("mailto", "data:", "tel:")):
 			if not to_expand[2].startswith("/"):
 				to_expand[2] = "/" + to_expand[2]
 			to_expand.insert(2, url)
@@ -2137,3 +2217,11 @@ def get_job_name(key: str, doctype: str = None, doc_name: str = None) -> str:
 	if doc_name:
 		job_name += f"_{doc_name}"
 	return job_name
+
+
+# This is used in test to count memory overhead of default imports.
+def _get_rss_memory_usage():
+	import psutil
+
+	rss = psutil.Process().memory_info().rss // (1024 * 1024)
+	return rss

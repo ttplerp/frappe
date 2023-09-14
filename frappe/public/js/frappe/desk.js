@@ -34,15 +34,6 @@ frappe.Application = class Application {
 		frappe.socketio.init();
 		frappe.model.init();
 
-		if (frappe.boot.status === "failed") {
-			frappe.msgprint({
-				message: frappe.boot.error,
-				title: __("Session Start Failed"),
-				indicator: "red",
-			});
-			throw "boot failed";
-		}
-
 		this.setup_frappe_vue();
 		this.load_bootinfo();
 		this.load_user_permissions();
@@ -84,6 +75,23 @@ frappe.Application = class Application {
 
 		// page container
 		this.make_page_container();
+		if (
+			!window.Cypress &&
+			frappe.boot.onboarding_tours &&
+			frappe.boot.user.onboarding_status != null
+		) {
+			let pending_tours =
+				frappe.boot.onboarding_tours.findIndex((tour) => {
+					frappe.boot.user.onboarding_status[tour[0]]?.is_complete == true;
+				}) == -1;
+			if (pending_tours && frappe.boot.onboarding_tours.length > 0) {
+				frappe.require("onboarding_tours.bundle.js", () => {
+					frappe.utils.sleep(1000).then(() => {
+						frappe.ui.init_onboarding_tour();
+					});
+				});
+			}
+		}
 		this.set_route();
 
 		// trigger app startup
@@ -155,7 +163,7 @@ frappe.Application = class Application {
 							user: frappe.session.user,
 						},
 						callback: function (r) {
-							if (r.message.show_alert) {
+							if (r.message && r.message.show_alert) {
 								frappe.show_alert({
 									indicator: "red",
 									message: r.message.message,
@@ -169,7 +177,6 @@ frappe.Application = class Application {
 	}
 
 	set_route() {
-		frappe.flags.setting_original_route = true;
 		if (frappe.boot && localStorage.getItem("session_last_route")) {
 			frappe.set_route(localStorage.getItem("session_last_route"));
 			localStorage.removeItem("session_last_route");
@@ -177,7 +184,6 @@ frappe.Application = class Application {
 			// route to home page
 			frappe.router.route();
 		}
-		frappe.after_ajax(() => (frappe.flags.setting_original_route = false));
 		frappe.router.on("change", () => {
 			$(".tooltip").hide();
 		});
@@ -455,6 +461,7 @@ frappe.Application = class Application {
 					}
 				},
 			});
+			dialog.get_field("password").disable_password_checks();
 			dialog.set_primary_action(__("Login"), () => {
 				dialog.set_message(__("Authenticating..."));
 				frappe.call({

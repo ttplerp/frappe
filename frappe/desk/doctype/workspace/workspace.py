@@ -1,6 +1,7 @@
 # Copyright (c) 2020, Frappe Technologies and contributors
 # License: MIT. See LICENSE
 
+from collections import defaultdict
 from json import loads
 
 import frappe
@@ -16,7 +17,10 @@ class Workspace(Document):
 	def validate(self):
 		if self.public and not is_workspace_manager() and not disable_saving_as_public():
 			frappe.throw(_("You need to be Workspace Manager to edit this document"))
-		validate_route_conflict(self.doctype, self.name)
+		if self.has_value_changed("title"):
+			validate_route_conflict(self.doctype, self.title)
+		else:
+			validate_route_conflict(self.doctype, self.name)
 
 		try:
 			if not isinstance(loads(self.content), list):
@@ -49,12 +53,22 @@ class Workspace(Document):
 			delete_folder(self.module, "Workspace", self.title)
 
 	@staticmethod
-	def get_module_page_map():
-		pages = frappe.get_all(
-			"Workspace", fields=["name", "module"], filters={"for_user": ""}, as_list=1
+	def get_module_wise_workspaces():
+		workspaces = frappe.get_all(
+			"Workspace",
+			fields=["name", "module"],
+			filters={"for_user": "", "public": 1},
+			order_by="creation",
 		)
 
-		return {page[1]: page[0] for page in pages if page[1]}
+		module_workspaces = defaultdict(list)
+
+		for workspace in workspaces:
+			if not workspace.module:
+				continue
+			module_workspaces[workspace.module].append(workspace.name)
+
+		return module_workspaces
 
 	def get_link_groups(self):
 		cards = []
@@ -194,7 +208,7 @@ def save_page(title, public, new_widgets, blocks):
 
 	if not public:
 		filters = {"for_user": frappe.session.user, "label": title + "-" + frappe.session.user}
-	pages = frappe.get_list("Workspace", filters=filters)
+	pages = frappe.get_all("Workspace", filters=filters)
 	if pages:
 		doc = frappe.get_doc("Workspace", pages[0])
 
@@ -209,11 +223,7 @@ def save_page(title, public, new_widgets, blocks):
 @frappe.whitelist()
 def update_page(name, title, icon, parent, public):
 	public = frappe.parse_json(public)
-
 	doc = frappe.get_doc("Workspace", name)
-
-	filters = {"parent_page": doc.title, "public": doc.public}
-	child_docs = frappe.get_list("Workspace", filters=filters)
 
 	if doc:
 		doc.title = title
@@ -230,6 +240,9 @@ def update_page(name, title, icon, parent, public):
 			rename_doc("Workspace", name, new_name, force=True, ignore_permissions=True)
 
 		# update new name and public in child pages
+		child_docs = frappe.get_all(
+			"Workspace", filters={"parent_page": doc.title, "public": doc.public}
+		)
 		if child_docs:
 			for child in child_docs:
 				child_doc = frappe.get_doc("Workspace", child.name)
@@ -246,6 +259,32 @@ def update_page(name, title, icon, parent, public):
 					rename_doc("Workspace", child.name, new_child_name, force=True, ignore_permissions=True)
 
 	return {"name": title, "public": public, "label": new_name}
+
+
+def hide_unhide_page(page_name: str, is_hidden: bool):
+	page = frappe.get_doc("Workspace", page_name)
+
+	if page.get("public") and not is_workspace_manager():
+		frappe.throw(
+			_("Need Workspace Manager role to hide/unhide public workspaces"), frappe.PermissionError
+		)
+
+	if not page.get("public") and page.get("for_user") != frappe.session.user:
+		frappe.throw(_("Cannot update private workspace of other users"), frappe.PermissionError)
+
+	page.is_hidden = int(is_hidden)
+	page.save(ignore_permissions=True)
+	return True
+
+
+@frappe.whitelist()
+def hide_page(page_name: str):
+	return hide_unhide_page(page_name, 1)
+
+
+@frappe.whitelist()
+def unhide_page(page_name: str):
+	return hide_unhide_page(page_name, 0)
 
 
 @frappe.whitelist()
@@ -266,6 +305,7 @@ def duplicate_page(page_name, new_page):
 	doc.public = new_page.get("is_public")
 	doc.for_user = ""
 	doc.label = doc.title
+	doc.module = ""
 	if not doc.public:
 		doc.for_user = doc.for_user or frappe.session.user
 		doc.label = f"{doc.title}-{doc.for_user}"
@@ -337,7 +377,7 @@ def last_sequence_id(doc):
 	if not doc_exists:
 		return 0
 
-	return frappe.db.get_list(
+	return frappe.get_all(
 		"Workspace",
 		fields=["sequence_id"],
 		filters={"public": doc.public, "for_user": doc.for_user},
@@ -346,7 +386,7 @@ def last_sequence_id(doc):
 
 
 def get_page_list(fields, filters):
-	return frappe.get_list("Workspace", fields=fields, filters=filters, order_by="sequence_id asc")
+	return frappe.get_all("Workspace", fields=fields, filters=filters, order_by="sequence_id asc")
 
 
 def is_workspace_manager():

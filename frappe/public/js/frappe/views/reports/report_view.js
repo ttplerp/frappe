@@ -33,7 +33,7 @@ frappe.views.ReportView = class ReportView extends frappe.views.ListView {
 				this.filters = this.report_doc.json.filters;
 				this.order_by = this.report_doc.json.order_by;
 				this.add_totals_row = this.report_doc.json.add_totals_row;
-				this.page_title = this.report_name;
+				this.page_title = __(this.report_name);
 				this.page_length = this.report_doc.json.page_length || 20;
 				this.order_by = this.report_doc.json.order_by || "modified desc";
 				this.chart_args = this.report_doc.json.chart_args;
@@ -56,6 +56,7 @@ frappe.views.ReportView = class ReportView extends frappe.views.ListView {
 		if (this.list_view_settings?.disable_auto_refresh) {
 			return;
 		}
+		frappe.socketio.doctype_subscribe(this.doctype);
 		frappe.realtime.on("list_update", (data) => this.on_update(data));
 	}
 
@@ -1348,9 +1349,9 @@ frappe.views.ReportView = class ReportView extends frappe.views.ListView {
 			.map((f) => {
 				const [doctype, fieldname, condition, value] = f;
 				if (condition !== "=") return "";
-
 				const label = frappe.meta.get_label(doctype, fieldname);
-				return `<h6>${__(label)}: ${value}</h6>`;
+				const docfield = frappe.meta.get_docfield(doctype, fieldname);
+				return `<h6>${__(label)}: ${frappe.format(value, docfield)}</h6>`;
 			})
 			.join("");
 	}
@@ -1415,6 +1416,7 @@ frappe.views.ReportView = class ReportView extends frappe.views.ListView {
 							print_settings: print_settings,
 							columns: this.columns,
 							data: rows_in_order,
+							can_use_smaller_font: 1,
 						});
 					});
 				},

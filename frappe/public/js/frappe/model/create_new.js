@@ -161,7 +161,9 @@ $.extend(frappe.model, {
 
 				if (!user_default) {
 					user_default = frappe.defaults.get_user_default(df.fieldname);
-				} else if (
+				}
+
+				if (
 					!user_default &&
 					df.remember_last_selected_value &&
 					frappe.boot.user.last_selected_values
@@ -190,7 +192,12 @@ $.extend(frappe.model, {
 			} else if (default_val == "Today") {
 				value = frappe.datetime.get_today();
 			} else if ((default_val || "").toLowerCase() === "now") {
-				value = frappe.datetime.now_datetime();
+				if (df.fieldtype == "Time") {
+					value = frappe.datetime.now_time();
+				} else {
+					// datetime fields are stored in system tz
+					value = frappe.datetime.system_datetime();
+				}
 			} else if (default_val[0] === ":") {
 				var boot_doc = frappe.model.get_default_from_boot_docs(df, doc, parent_doc);
 				var is_allowed_boot_doc =
@@ -300,6 +307,10 @@ $.extend(frappe.model, {
 		newdoc.modified = "";
 		newdoc.lft = null;
 		newdoc.rgt = null;
+
+		if (from_amend && parent_doc) {
+			newdoc._amended_from = doc.name;
+		}
 
 		return newdoc;
 	},

@@ -3,6 +3,7 @@
 
 import deep_equal from "fast-deep-equal";
 import number_systems from "./number_systems";
+import cloneDeepWith from "lodash/cloneDeepWith";
 
 frappe.provide("frappe.utils");
 
@@ -245,6 +246,7 @@ Object.assign(frappe.utils, {
 	},
 
 	escape_html: function (txt) {
+		if (!txt) return "";
 		let escape_html_mapping = {
 			"&": "&amp;",
 			"<": "&lt;",
@@ -278,9 +280,9 @@ Object.assign(frappe.utils, {
 	},
 
 	html2text: function (html) {
-		let d = document.createElement("div");
-		d.innerHTML = html;
-		return d.textContent;
+		const parser = new DOMParser();
+		const dom = parser.parseFromString(html, "text/html");
+		return dom.body.textContent;
 	},
 
 	is_url: function (txt) {
@@ -338,9 +340,21 @@ Object.assign(frappe.utils, {
 			scroll_top = 0;
 		}
 
+		const highlight = () => {
+			if (highlight_element) {
+				$(element).addClass("highlight");
+				document.addEventListener(
+					"click",
+					function () {
+						$(element).removeClass("highlight");
+					},
+					{ once: true }
+				);
+			}
+		};
 		// already there
 		if (scroll_top == element_to_be_scrolled.scrollTop()) {
-			return;
+			return highlight();
 		}
 
 		if (animate) {
@@ -350,16 +364,7 @@ Object.assign(frappe.utils, {
 				})
 				.promise()
 				.then(() => {
-					if (highlight_element) {
-						$(element).addClass("highlight");
-						document.addEventListener(
-							"click",
-							function () {
-								$(element).removeClass("highlight");
-							},
-							{ once: true }
-						);
-					}
+					highlight();
 					callback && callback();
 				});
 		} else {
@@ -817,6 +822,13 @@ Object.assign(frappe.utils, {
 		return /\.(gif|jpg|jpeg|tiff|png|svg)$/i.test(filename);
 	},
 
+	is_video_file: function (filename) {
+		if (!filename) return false;
+		// url can have query params
+		filename = filename.split("?")[0];
+		return /\.(mov|mp4|mkv|webm)$/i.test(filename);
+	},
+
 	play_sound: function (name) {
 		try {
 			if (frappe.boot.user.mute_sounds) {
@@ -944,11 +956,11 @@ Object.assign(frappe.utils, {
 			return "";
 		} else if (values.length > 0) {
 			if (column.column.fieldtype == "Percent" || type === "mean") {
-				return values.reduce((a, b) => a + flt(b)) / values.length;
+				return values.reduce((a, b) => flt(a) + flt(b)) / values.length;
 			} else if (column.column.fieldtype == "Int") {
-				return values.reduce((a, b) => a + cint(b));
+				return values.reduce((a, b) => cint(a) + cint(b));
 			} else if (frappe.model.is_numeric_field(column.column.fieldtype)) {
-				return values.reduce((a, b) => a + flt(b));
+				return values.reduce((a, b) => flt(a) + flt(b));
 			} else {
 				return null;
 			}
@@ -998,6 +1010,10 @@ Object.assign(frappe.utils, {
 
 	deep_equal(a, b) {
 		return deep_equal(a, b);
+	},
+
+	deep_clone(obj, customizer) {
+		return cloneDeepWith(obj, customizer);
 	},
 
 	file_name_ellipsis(filename, length) {
@@ -1255,20 +1271,12 @@ Object.assign(frappe.utils, {
 				if (frappe.model.is_single(item.doctype)) {
 					route = doctype_slug;
 				} else {
-					if (!item.doc_view) {
-						if (frappe.model.is_tree(item.doctype)) {
-							item.doc_view = "Tree";
-						} else {
-							item.doc_view = "List";
-						}
-					}
-
 					switch (item.doc_view) {
 						case "List":
 							if (item.filters) {
 								frappe.route_options = item.filters;
 							}
-							route = doctype_slug;
+							route = `${doctype_slug}/view/list`;
 							break;
 						case "Tree":
 							route = `${doctype_slug}/view/tree`;
@@ -1285,12 +1293,11 @@ Object.assign(frappe.utils, {
 						case "Calendar":
 							route = `${doctype_slug}/view/calendar/default`;
 							break;
+						case "Kanban":
+							route = `${doctype_slug}/view/kanban`;
+							break;
 						default:
-							frappe.throw({
-								message: __("Not a valid view:") + item.doc_view,
-								title: __("Unknown View"),
-							});
-							route = "";
+							route = doctype_slug;
 					}
 				}
 			} else if (type === "report") {
@@ -1387,7 +1394,7 @@ Object.assign(frappe.utils, {
 			: "";
 
 		return $(`<div class="summary-item">
-			<span class="summary-label">${summary.label}</span>
+			<span class="summary-label">${__(summary.label)}</span>
 			<div class="summary-value ${color}">${value}</div>
 		</div>`);
 	},
@@ -1434,6 +1441,67 @@ Object.assign(frappe.utils, {
 		});
 		!prepend && button.appendTo(wrapper);
 		prepend && wrapper.prepend(button);
+	},
+
+	add_select_group_button(wrapper, actions, btn_type, icon = "", prepend) {
+		// actions = [{
+		// 	label: "Action 1",
+		// 	description: "Description 1", (optional)
+		// 	action: () => {},
+		// },
+		// {
+		// 	label: "Action 2",
+		// 	description: "Description 2", (optional)
+		// 	action: () => {},
+		// }]
+		let selected_action = actions[0];
+
+		let $select_group_button = $(`
+			<div class="btn-group select-group-btn">
+				<button type="button" class="btn ${btn_type} btn-sm selected-button">
+					<span class="left-icon">${icon && frappe.utils.icon(icon, "xs")}</span>
+					<span class="label">${selected_action.label}</span>
+				</button>
+
+				<button type="button" class="btn ${btn_type} btn-sm dropdown-toggle dropdown-toggle-split" data-toggle="dropdown">
+					${frappe.utils.icon("down", "xs")}
+				</button>
+
+				<ul class="dropdown-menu dropdown-menu-right" role="menu"></ul>
+			</div>
+		`);
+
+		actions.forEach((action) => {
+			$(`<li>
+				<a class="dropdown-item flex">
+					<div class="tick-icon mr-2">${frappe.utils.icon("check", "xs")}</div>
+					<div>
+						<div class="item-label">${action.label}</div>
+						<div class="item-description text-muted small">${action.description || ""}</div>
+					</div>
+				</a>
+			</li>`)
+				.appendTo($select_group_button.find(".dropdown-menu"))
+				.click((e) => {
+					selected_action = action;
+					$select_group_button.find(".selected-button .label").text(action.label);
+
+					$(e.currentTarget).find(".tick-icon").addClass("selected");
+					$(e.currentTarget).siblings().find(".tick-icon").removeClass("selected");
+				});
+		});
+
+		$select_group_button.find(".dropdown-menu li:first-child .tick-icon").addClass("selected");
+
+		$select_group_button.find(".selected-button").click((event) => {
+			event.stopPropagation();
+			selected_action.action && selected_action.action(event);
+		});
+
+		!prepend && $select_group_button.appendTo(wrapper);
+		prepend && wrapper.prepend($select_group_button);
+
+		return $select_group_button;
 	},
 
 	sleep(time) {

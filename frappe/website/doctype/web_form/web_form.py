@@ -98,7 +98,6 @@ def get_context(context):
 		"""Build context to render the `web_form.html` template"""
 		context.in_edit_mode = False
 		context.in_view_mode = False
-		self.set_web_form_module()
 
 		if frappe.form_dict.is_list:
 			context.template = "website/doctype/web_form/templates/web_list.html"
@@ -154,10 +153,16 @@ def get_context(context):
 			and not frappe.form_dict.name
 			and not frappe.form_dict.is_list
 		):
-			name = frappe.db.get_value(self.doc_type, {"owner": frappe.session.user}, "name")
-			if name:
-				context.in_view_mode = True
-				frappe.redirect(f"/{self.route}/{name}")
+			names = frappe.db.get_values(self.doc_type, {"owner": frappe.session.user}, pluck="name")
+			for name in names:
+				if self.condition:
+					doc = frappe.get_doc(self.doc_type, name)
+					if frappe.safe_eval(self.condition, None, {"doc": doc.as_dict()}):
+						context.in_view_mode = True
+						frappe.redirect(f"/{self.route}/{name}")
+				else:
+					context.in_view_mode = True
+					frappe.redirect(f"/{self.route}/{name}")
 
 		# Show new form when
 		# - User is Guest
@@ -192,9 +197,22 @@ def get_context(context):
 
 		self.add_custom_context_and_script(context)
 		self.load_translations(context)
+		self.add_metatags(context)
 
 		context.boot = get_boot_data()
 		context.boot["link_title_doctypes"] = frappe.boot.get_link_title_doctypes()
+
+	def add_metatags(self, context):
+		description = self.meta_description
+
+		if not description and self.introduction_text:
+			description = self.introduction_text[:140]
+
+		context.metatags = {
+			"name": self.meta_title or self.title,
+			"description": description,
+			"image": self.meta_image,
+		}
 
 	def load_translations(self, context):
 		translated_messages = frappe.translate.get_dict("doctype", self.doc_type)
@@ -284,13 +302,14 @@ def get_context(context):
 
 	def add_custom_context_and_script(self, context):
 		"""Update context from module if standard and append script"""
-		if self.web_form_module:
-			new_context = self.web_form_module.get_context(context)
+		if self.is_standard:
+			web_form_module = get_web_form_module(self)
+			new_context = web_form_module.get_context(context)
 
 			if new_context:
 				context.update(new_context)
 
-			js_path = os.path.join(os.path.dirname(self.web_form_module.__file__), scrub(self.name) + ".js")
+			js_path = os.path.join(os.path.dirname(web_form_module.__file__), scrub(self.name) + ".js")
 			if os.path.exists(js_path):
 				script = frappe.render_template(open(js_path).read(), context)
 
@@ -300,9 +319,7 @@ def get_context(context):
 
 				context.script = script
 
-			css_path = os.path.join(
-				os.path.dirname(self.web_form_module.__file__), scrub(self.name) + ".css"
-			)
+			css_path = os.path.join(os.path.dirname(web_form_module.__file__), scrub(self.name) + ".css")
 			if os.path.exists(css_path):
 				style = open(css_path).read()
 
@@ -321,14 +338,6 @@ def get_context(context):
 			parents = context.parents
 
 		return parents
-
-	def set_web_form_module(self):
-		"""Get custom web form module if exists"""
-		self.web_form_module = self.get_web_form_module()
-
-	def get_web_form_module(self):
-		if self.is_standard:
-			return get_doc_module(self.module, self.doctype, self.name)
 
 	def validate_mandatory(self, doc):
 		"""Validate mandatory web form fields"""
@@ -352,7 +361,7 @@ def get_context(context):
 			return False
 
 		if self.apply_document_permissions:
-			return frappe.get_doc(doctype, name).has_permission()
+			return frappe.get_doc(doctype, name).has_permission(permtype=ptype)
 
 		# owner matches
 		elif frappe.db.get_value(doctype, name, "owner") == frappe.session.user:
@@ -368,9 +377,14 @@ def get_context(context):
 			return False
 
 
+def get_web_form_module(doc):
+	if doc.is_standard:
+		return get_doc_module(doc.module, doc.doctype, doc.name)
+
+
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="web_form", limit=5, seconds=60, methods=["POST"])
-def accept(web_form, data, docname=None):
+def accept(web_form, data):
 	"""Save the web form"""
 	data = frappe._dict(json.loads(data))
 
@@ -378,19 +392,24 @@ def accept(web_form, data, docname=None):
 	files_to_delete = []
 
 	web_form = frappe.get_doc("Web Form", web_form)
+	doctype = web_form.doc_type
+	user = frappe.session.user
+
+	if web_form.anonymous and frappe.session.user != "Guest":
+		frappe.session.user = "Guest"
 
 	if data.name and not web_form.allow_edit:
 		frappe.throw(_("You are not allowed to update this Web Form Document"))
 
 	frappe.flags.in_web_form = True
-	meta = frappe.get_meta(data.doctype)
+	meta = frappe.get_meta(doctype)
 
-	if docname:
+	if data.name:
 		# update
-		doc = frappe.get_doc(data.doctype, docname)
+		doc = frappe.get_doc(doctype, data.name)
 	else:
 		# insert
-		doc = frappe.new_doc(data.doctype)
+		doc = frappe.new_doc(doctype)
 
 	# set values
 	for field in web_form.web_form_fields:
@@ -411,7 +430,7 @@ def accept(web_form, data, docname=None):
 		doc.set(fieldname, value)
 
 	if doc.name:
-		if web_form.has_web_form_permission(doc.doctype, doc.name, "write"):
+		if web_form.has_web_form_permission(doctype, doc.name, "write"):
 			doc.save(ignore_permissions=True)
 		else:
 			# only if permissions are present
@@ -433,7 +452,7 @@ def accept(web_form, data, docname=None):
 
 			# remove earlier attached file (if exists)
 			if doc.get(fieldname):
-				remove_file_by_url(doc.get(fieldname), doctype=doc.doctype, name=doc.name)
+				remove_file_by_url(doc.get(fieldname), doctype=doctype, name=doc.name)
 
 			# save new file
 			filename, dataurl = filedata.split(",", 1)
@@ -441,7 +460,7 @@ def accept(web_form, data, docname=None):
 				{
 					"doctype": "File",
 					"file_name": filename,
-					"attached_to_doctype": doc.doctype,
+					"attached_to_doctype": doctype,
 					"attached_to_name": doc.name,
 					"content": dataurl,
 					"decode": True,
@@ -457,7 +476,10 @@ def accept(web_form, data, docname=None):
 	if files_to_delete:
 		for f in files_to_delete:
 			if f:
-				remove_file_by_url(f, doctype=doc.doctype, name=doc.name)
+				remove_file_by_url(f, doctype=doctype, name=doc.name)
+
+	if web_form.anonymous and frappe.session.user == "Guest" and user:
+		frappe.session.user = user
 
 	frappe.flags.web_form_doc = doc
 	return doc
@@ -582,6 +604,8 @@ def get_link_options(web_form_name, doctype, allow_read_on_all_link_options=Fals
 
 			if not allow_read_on_all_link_options:
 				limited_to_user = True
+		else:
+			frappe.throw(_("You must be logged in to use this form."), frappe.PermissionError)
 
 	else:
 		for field in web_form_doc.web_form_fields:
@@ -612,4 +636,6 @@ def get_link_options(web_form_name, doctype, allow_read_on_all_link_options=Fals
 			return "\n".join([doc.value for doc in link_options])
 
 	else:
-		raise frappe.PermissionError(f"Not Allowed, {doctype}")
+		raise frappe.PermissionError(
+			_("You don't have permission to access the {0} DocType.").format(doctype)
+		)

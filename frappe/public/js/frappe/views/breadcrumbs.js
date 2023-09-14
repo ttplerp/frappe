@@ -41,7 +41,6 @@ frappe.breadcrumbs = {
 				type: type,
 			};
 		}
-
 		this.all[frappe.breadcrumbs.current_page()] = obj;
 		this.update();
 	},
@@ -84,25 +83,33 @@ frappe.breadcrumbs = {
 		this.$breadcrumbs.append(html);
 	},
 
+	get last_route() {
+		return frappe.route_history.slice(-2)[0];
+	},
+
 	set_workspace_breadcrumb(breadcrumbs) {
-		// get preferred module for breadcrumbs, based on sent via module
+		// get preferred module for breadcrumbs, based on history and module
 
 		if (!breadcrumbs.workspace) {
 			this.set_workspace(breadcrumbs);
 		}
-
-		if (breadcrumbs.workspace) {
-			if (
-				!breadcrumbs.module_info.blocked &&
-				frappe.visible_modules.includes(breadcrumbs.module_info.module)
-			) {
-				$(
-					`<li><a href="/app/${frappe.router.slug(breadcrumbs.workspace)}">${__(
-						breadcrumbs.workspace
-					)}</a></li>`
-				).appendTo(this.$breadcrumbs);
-			}
+		if (!breadcrumbs.workspace) {
+			return;
 		}
+
+		if (
+			breadcrumbs.module_info &&
+			(breadcrumbs.module_info.blocked ||
+				!frappe.visible_modules.includes(breadcrumbs.module_info.module))
+		) {
+			return;
+		}
+
+		$(
+			`<li><a href="/app/${frappe.router.slug(breadcrumbs.workspace)}">${__(
+				breadcrumbs.workspace
+			)}</a></li>`
+		).appendTo(this.$breadcrumbs);
 	},
 
 	set_workspace(breadcrumbs) {
@@ -119,6 +126,19 @@ frappe.breadcrumbs = {
 			breadcrumbs.module = this.preferred[breadcrumbs.doctype];
 		}
 
+		// guess from last route
+		if (this.last_route?.[0] == "Workspaces") {
+			let last_workspace = this.last_route[1];
+
+			if (
+				breadcrumbs.module &&
+				frappe.boot.module_wise_workspaces[breadcrumbs.module]?.includes(last_workspace)
+			) {
+				breadcrumbs.workspace = last_workspace;
+				return;
+			}
+		}
+
 		if (breadcrumbs.module) {
 			if (this.module_map[breadcrumbs.module]) {
 				breadcrumbs.module = this.module_map[breadcrumbs.module];
@@ -127,8 +147,11 @@ frappe.breadcrumbs = {
 			breadcrumbs.module_info = frappe.get_module(breadcrumbs.module);
 
 			// set workspace
-			if (breadcrumbs.module_info && frappe.boot.module_page_map[breadcrumbs.module]) {
-				breadcrumbs.workspace = frappe.boot.module_page_map[breadcrumbs.module];
+			if (
+				breadcrumbs.module_info &&
+				frappe.boot.module_wise_workspaces[breadcrumbs.module]
+			) {
+				breadcrumbs.workspace = frappe.boot.module_wise_workspaces[breadcrumbs.module][0];
 			}
 		}
 	},
@@ -138,13 +161,13 @@ frappe.breadcrumbs = {
 		const doctype_meta = frappe.get_doc("DocType", doctype);
 		if (
 			(doctype === "User" && !frappe.user.has_role("System Manager")) ||
-			(doctype_meta && doctype_meta.issingle)
+			doctype_meta?.issingle
 		) {
 			// no user listview for non-system managers and single doctypes
 		} else {
 			let route;
 			const doctype_route = frappe.router.slug(frappe.router.doctype_layout || doctype);
-			if (frappe.boot.treeviews.indexOf(doctype) !== -1) {
+			if (doctype_meta?.is_tree) {
 				let view = frappe.model.user_settings[doctype].last_view || "Tree";
 				route = `${doctype_route}/view/${view}`;
 			} else {

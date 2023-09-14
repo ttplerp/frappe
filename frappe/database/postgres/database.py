@@ -12,7 +12,7 @@ from psycopg2.errorcodes import (
 	UNDEFINED_TABLE,
 	UNIQUE_VIOLATION,
 )
-from psycopg2.errors import SequenceGeneratorLimitExceeded, SyntaxError
+from psycopg2.errors import ReadOnlySqlTransaction, SequenceGeneratorLimitExceeded, SyntaxError
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ
 
 import frappe
@@ -56,6 +56,10 @@ class PostgresExceptionUtil:
 		return isinstance(e, psycopg2.extensions.QueryCanceledError)
 
 	@staticmethod
+	def is_read_only_mode_error(e) -> bool:
+		return isinstance(e, ReadOnlySqlTransaction)
+
+	@staticmethod
 	def is_syntax_error(e):
 		return isinstance(e, SyntaxError)
 
@@ -94,6 +98,10 @@ class PostgresExceptionUtil:
 	@staticmethod
 	def is_duplicate_fieldname(e):
 		return getattr(e, "pgcode", None) == DUPLICATE_COLUMN
+
+	@staticmethod
+	def is_statement_timeout(e):
+		return PostgresDatabase.is_timedout(e) or isinstance(e, frappe.QueryTimeoutError)
 
 	@staticmethod
 	def is_data_too_long(e):
@@ -156,6 +164,10 @@ class PostgresDatabase(PostgresExceptionUtil, Database):
 		conn.set_isolation_level(ISOLATION_LEVEL_REPEATABLE_READ)
 
 		return conn
+
+	def set_execution_timeout(self, seconds: int):
+		# Postgres expects milliseconds as input
+		self.sql("set local statement_timeout = %s", int(seconds) * 1000)
 
 	def escape(self, s, percent=True):
 		"""Escape quotes and percent in given string."""

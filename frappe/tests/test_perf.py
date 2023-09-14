@@ -16,14 +16,22 @@ query. This test can be written like this.
 >>> 		get_controller("User")
 
 """
+import time
 import unittest
 
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+
 import frappe
+from frappe.frappeclient import FrappeClient
 from frappe.model.base_document import get_controller
+from frappe.query_builder.utils import db_type_is
+from frappe.tests.test_query_builder import run_only_if
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import cint
 from frappe.website.path_resolver import PathResolver
 
 
+@run_only_if(db_type_is.MARIADB)
 class TestPerformance(FrappeTestCase):
 	def reset_request_specific_caches(self):
 		# To simulate close to request level of handling
@@ -33,6 +41,8 @@ class TestPerformance(FrappeTestCase):
 		frappe.clear_cache()
 
 	def setUp(self) -> None:
+		self.HOST = frappe.utils.get_site_url(frappe.local.site)
+
 		self.reset_request_specific_caches()
 
 	def test_meta_caching(self):
@@ -41,11 +51,47 @@ class TestPerformance(FrappeTestCase):
 		with self.assertQueryCount(0):
 			frappe.get_meta("User")
 
+	def test_set_value_query_count(self):
+		frappe.db.set_value("User", "Administrator", "interest", "Nothing")
+
+		with self.assertQueryCount(1):
+			frappe.db.set_value("User", "Administrator", "interest", "Nothing")
+
+		with self.assertQueryCount(1):
+			frappe.db.set_value("User", {"user_type": "System User"}, "interest", "Nothing")
+
+		with self.assertQueryCount(1):
+			frappe.db.set_value(
+				"User", {"user_type": "System User"}, {"interest": "Nothing", "bio": "boring person"}
+			)
+
 	def test_controller_caching(self):
 
 		get_controller("User")
 		with self.assertQueryCount(0):
 			get_controller("User")
+
+	def test_get_value_limits(self):
+		# check both dict and list style filters
+		filters = [{"enabled": 1}, [["enabled", "=", 1]]]
+
+		# Warm up code, becase get_list uses meta.
+		frappe.db.get_values("User", filters=filters[1], limit=1)
+		for filter in filters:
+			with self.assertRowsRead(1):
+				self.assertEqual(1, len(frappe.db.get_values("User", filters=filter, limit=1)))
+			with self.assertRowsRead(2):
+				self.assertEqual(2, len(frappe.db.get_values("User", filters=filter, limit=2)))
+
+			self.assertEqual(
+				len(frappe.db.get_values("User", filters=filter)), frappe.db.count("User", filter)
+			)
+
+			with self.assertRowsRead(1):
+				frappe.db.get_value("User", filters=filter)
+
+			with self.assertRowsRead(1):
+				frappe.db.exists("User", filter)
 
 	def test_db_value_cache(self):
 		"""Link validation if repeated should just use db.value_cache, hence no extra queries"""
@@ -54,6 +100,36 @@ class TestPerformance(FrappeTestCase):
 
 		with self.assertQueryCount(0):
 			doc.get_invalid_links()
+
+	@retry(
+		retry=retry_if_exception_type(AssertionError),
+		stop=stop_after_attempt(3),
+		wait=wait_fixed(0.5),
+		reraise=True,
+	)
+	def test_req_per_seconds_basic(self):
+		"""Ideally should be ran against gunicorn worker, though I have not seen any difference
+		when using werkzeug's run_simple for synchronous requests."""
+
+		EXPECTED_RPS = 55  # measured on GHA
+		FAILURE_THREASHOLD = 0.1
+
+		req_count = 1000
+		client = FrappeClient(self.HOST, "Administrator", self.ADMIN_PASSWORD)
+
+		start = time.perf_counter()
+		for _ in range(req_count):
+			client.get_list("ToDo", limit_page_length=1)
+		end = time.perf_counter()
+
+		rps = req_count / (end - start)
+
+		print(f"Completed {req_count} in {end - start} @ {rps} requests per seconds")
+		self.assertGreaterEqual(
+			rps,
+			EXPECTED_RPS * (1 - FAILURE_THREASHOLD),
+			f"Possible performance regression in basic /api/Resource list  requests",
+		)
 
 	@unittest.skip("Not implemented")
 	def test_homepage_resolver(self):

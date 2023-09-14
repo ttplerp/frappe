@@ -9,6 +9,7 @@ import frappe
 import frappe.permissions
 from frappe import _
 from frappe.core.doctype.access_log.access_log import make_access_log
+from frappe.model.utils import is_virtual_doctype
 from frappe.utils import cint, cstr, format_datetime, format_duration, formatdate, parse_json
 from frappe.utils.csvutils import UnicodeWriter
 
@@ -368,6 +369,8 @@ class DataExporter:
 			if self.all_doctypes:
 				# add child tables
 				for c in self.child_doctypes:
+					if is_virtual_doctype(c["doctype"]):
+						continue
 					child_doctype_table = DocType(c["doctype"])
 					data_row = (
 						frappe.qb.from_(child_doctype_table)
@@ -410,7 +413,7 @@ class DataExporter:
 				row[_column_start_end.start + i + 1] = value
 
 	def build_response_as_excel(self):
-		filename = frappe.generate_hash("", 10)
+		filename = frappe.generate_hash(length=10)
 		with open(filename, "wb") as f:
 			f.write(cstr(self.writer.getvalue()).encode("utf-8"))
 		f = open(filename)
@@ -424,7 +427,7 @@ class DataExporter:
 		os.remove(filename)
 
 		# write out response as a xlsx type
-		frappe.response["filename"] = self.doctype + ".xlsx"
+		frappe.response["filename"] = _(self.doctype) + ".xlsx"
 		frappe.response["filecontent"] = xlsx_file.getvalue()
 		frappe.response["type"] = "binary"
 

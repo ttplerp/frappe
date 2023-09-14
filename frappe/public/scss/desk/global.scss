@@ -234,6 +234,41 @@ h2 {
 	font-size: var(--text-md);
 }
 
+.btn-group {
+	.btn {
+		box-shadow: none;
+		outline: 1px solid var(--btn-group-border-color);
+
+		&:not(:first-child) {
+			margin-left: 1px;
+		}
+
+		&:focus {
+			outline: 2px solid var(--dark-border-color);
+		}
+	}
+}
+
+.select-group-btn {
+	.dropdown-toggle-split::after {
+		display: none;
+	}
+
+	.dropdown-item {
+		.tick-icon {
+			visibility: hidden;
+
+			&.selected {
+				visibility: visible;
+			}
+		}
+
+		.item-label {
+			font-weight: 500;
+		}
+	}
+}
+
 .btn-xs {
 	@extend .btn-sm;
 	line-height: 1.2;
@@ -418,32 +453,25 @@ kbd {
 
 // freeze backdrop text
 #freeze {
-	z-index: 1020;
+	z-index: 1055;
 	bottom: 0;
 	opacity: 0;
 	background-color: var(--bg-color);
 
 	.freeze-message-container {
+		inset: 0;
+		padding: 3rem;
+		background-color: var(--bg-light-gray);
+		color: var(--text-on-light-gray);
+		font-size: larger;
 		position: absolute;
-		top: 0;
-		bottom: 0;
-		left: 0;
-		right: 0;
 		display: grid;
 		place-content: center;
 	}
-
-	.freeze-message {
-		color: var(--text-color) !important;
-	}
-}
-
-#freeze.dark {
-	background-color: var(--gray-900);
 }
 
 #freeze.in {
-	opacity: 0.5;
+	opacity: 0.8;
 }
 
 .msg-box {
@@ -563,9 +591,23 @@ details > summary:focus {
 	display: none;
 }
 
-.highlight {
+.highlight:not(.frappe-control) {
 	transition: 0.5s ease background-color;
 	box-shadow: var(--highlight-shadow) !important;
+}
+
+.frappe-control.highlight {
+	--wrap-padding: calc(-1 * var(--padding-sm));
+	&::after {
+		content: " ";
+		border-radius: 5px;
+		box-shadow: var(--highlight-shadow) !important;
+		top: var(--wrap-padding);
+		position: absolute;
+		bottom: var(--wrap-padding);
+		left: var(--wrap-padding);
+		right: var(--wrap-padding);
+	}
 }
 
 .dropdown-menu.small {

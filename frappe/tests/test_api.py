@@ -2,6 +2,7 @@ import sys
 from contextlib import contextmanager
 from random import choice
 from threading import Thread
+from time import time
 from unittest.mock import patch
 
 import requests
@@ -9,7 +10,8 @@ from semantic_version import Version
 from werkzeug.test import TestResponse
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
+from frappe.installer import update_site_config
+from frappe.tests.utils import FrappeTestCase, patch_hooks
 from frappe.utils import get_site_url, get_test_client
 
 try:
@@ -269,3 +271,57 @@ class TestMethodAPI(FrappeAPITestCase):
 		self.assertEqual(response.json["message"], "Administrator")
 
 		authorization_token = None
+
+
+class TestReadOnlyMode(FrappeAPITestCase):
+	"""During migration if read only mode can be enabled.
+	Test if reads work well and writes are blocked"""
+
+	REQ_PATH = "/api/resource/ToDo"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		update_site_config("allow_reads_during_maintenance", 1)
+		cls.addClassCleanup(update_site_config, "maintenance_mode", 0)
+		# XXX: this has potential to crumble rest of the test suite.
+		update_site_config("maintenance_mode", 1)
+
+	def test_reads(self):
+		response = self.get(self.REQ_PATH, {"sid": self.sid})
+		self.assertEqual(response.status_code, 200)
+		self.assertIsInstance(response.json, dict)
+		self.assertIsInstance(response.json["data"], list)
+
+	def test_blocked_writes(self):
+		response = self.post(self.REQ_PATH, {"description": frappe.mock("paragraph"), "sid": self.sid})
+		self.assertEqual(response.status_code, 503)
+		self.assertEqual(response.json["exc_type"], "InReadOnlyMode")
+
+
+class TestWSGIApp(FrappeAPITestCase):
+	def test_request_hooks(self):
+		self.addCleanup(lambda: _test_REQ_HOOK.clear())
+
+		with patch_hooks(
+			{
+				"before_request": ["frappe.tests.test_api.before_request"],
+				"after_request": ["frappe.tests.test_api.after_request"],
+			}
+		):
+			self.assertIsNone(_test_REQ_HOOK.get("before_request"))
+			self.assertIsNone(_test_REQ_HOOK.get("after_request"))
+			res = self.get("/api/method/ping")
+			self.assertEqual(res.json, {"message": "pong"})
+			self.assertLess(_test_REQ_HOOK.get("before_request"), _test_REQ_HOOK.get("after_request"))
+
+
+_test_REQ_HOOK = {}
+
+
+def before_request(*args, **kwargs):
+	_test_REQ_HOOK["before_request"] = time()
+
+
+def after_request(*args, **kwargs):
+	_test_REQ_HOOK["after_request"] = time()

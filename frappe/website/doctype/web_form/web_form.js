@@ -42,6 +42,12 @@ frappe.ui.form.on("Web Form", {
 		render_list_settings_message(frm);
 	},
 
+	anonymous: function (frm) {
+		if (frm.doc.anonymous) {
+			frm.set_value("login_required", 0);
+		}
+	},
+
 	validate: function (frm) {
 		if (!frm.doc.login_required) {
 			frm.set_value("allow_multiple", 0);
@@ -79,7 +85,7 @@ frappe.ui.form.on("Web Form", {
 				.get_field("Web Form Field", "fieldtype")
 				.options.split("\n");
 
-			let added_fields = (frm.doc.fields || []).map((d) => d.fieldname);
+			let added_fields = (frm.doc.web_form_fields || []).map((d) => d.fieldname);
 
 			get_fields_for_doctype(frm.doc.doc_type).then((fields) => {
 				for (let df of fields) {

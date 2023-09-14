@@ -132,7 +132,7 @@ class Contact(Document):
 def get_default_contact(doctype, name):
 	"""Returns default contact for the given doctype, name"""
 	out = frappe.db.sql(
-		'''select parent,
+		"""select parent,
 			IFNULL((select is_primary_contact from tabContact c where c.name = dl.parent), 0)
 				as is_primary_contact
 		from
@@ -140,7 +140,7 @@ def get_default_contact(doctype, name):
 		where
 			dl.link_doctype=%s and
 			dl.link_name=%s and
-			dl.parenttype = "Contact"''',
+			dl.parenttype = 'Contact'""",
 		(doctype, name),
 		as_dict=True,
 	)
@@ -210,8 +210,9 @@ def update_contact(doc, method):
 def contact_query(doctype, txt, searchfield, start, page_len, filters):
 	from frappe.desk.reportview import get_match_cond
 
+	doctype = "Contact"
 	if (
-		not frappe.get_meta("Contact").get_field(searchfield)
+		not frappe.get_meta(doctype).get_field(searchfield)
 		and searchfield not in frappe.db.DEFAULT_COLUMNS
 	):
 		return []

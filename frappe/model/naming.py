@@ -59,13 +59,15 @@ class NamingSeries:
 		if not NAMING_SERIES_PATTERN.match(self.series):
 			frappe.throw(
 				_(
-					'Special Characters except "-", "#", ".", "/", "{" and "}" not allowed in naming series',
-				),
+					"Special Characters except '-', '#', '.', '/', '{{' and '}}' not allowed in naming series {0}"
+				).format(frappe.bold(self.series)),
 				exc=InvalidNamingSeriesError,
 			)
 
-	def generate_next_name(self, doc: "Document") -> str:
-		self.validate()
+	def generate_next_name(self, doc: "Document", *, ignore_validate=False) -> str:
+		if not ignore_validate:
+			self.validate()
+
 		parts = self.series.split(".")
 		return parse_naming_series(parts, doc=doc)
 
@@ -165,16 +167,7 @@ def set_new_name(doc):
 	if not doc.name and autoname:
 		set_name_from_naming_options(autoname, doc)
 
-	# if the autoname option is 'field:' and no name was derived, we need to
-	# notify
-	if not doc.name and autoname.startswith("field:"):
-		fieldname = autoname[6:]
-		frappe.throw(_("{0} is required").format(doc.meta.get_label(fieldname)))
-
 	# at this point, we fall back to name generation with the hash option
-	if not doc.name and autoname == "hash":
-		doc.name = make_autoname("hash", doc.doctype)
-
 	if not doc.name:
 		doc.name = make_autoname("hash", doc.doctype)
 
@@ -220,6 +213,13 @@ def set_name_from_naming_options(autoname, doc):
 
 	if _autoname.startswith("field:"):
 		doc.name = _field_autoname(autoname, doc)
+
+		# if the autoname option is 'field:' and no name was derived, we need to
+		# notify
+		if not doc.name:
+			fieldname = autoname[6:]
+			frappe.throw(_("{0} is required").format(doc.meta.get_label(fieldname)))
+
 	elif _autoname.startswith("naming_series:"):
 		set_name_by_naming_series(doc)
 	elif _autoname.startswith("prompt"):
@@ -234,16 +234,21 @@ def set_naming_from_document_naming_rule(doc):
 	"""
 	Evaluate rules based on "Document Naming Series" doctype
 	"""
-	if doc.doctype in log_types:
+	from frappe.model.base_document import DOCTYPES_FOR_DOCTYPE
+
+	IGNORED_DOCTYPES = {*log_types, *DOCTYPES_FOR_DOCTYPE, "DefaultValue", "Patch Log"}
+
+	if doc.doctype in IGNORED_DOCTYPES:
 		return
 
-	# ignore_ddl if naming is not yet bootstrapped
-	for d in frappe.get_all(
+	document_naming_rules = frappe.cache_manager.get_doctype_map(
 		"Document Naming Rule",
-		dict(document_type=doc.doctype, disabled=0),
+		doc.doctype,
+		filters={"document_type": doc.doctype, "disabled": 0},
 		order_by="priority desc",
-		ignore_ddl=True,
-	):
+	)
+
+	for d in document_naming_rules:
 		frappe.get_cached_doc("Document Naming Rule", d.name).apply(doc)
 		if doc.name:
 			break
@@ -260,7 +265,7 @@ def set_name_by_naming_series(doc):
 	doc.name = make_autoname(doc.naming_series + ".#####", "", doc)
 
 
-def make_autoname(key="", doctype="", doc=""):
+def make_autoname(key="", doctype="", doc="", *, ignore_validate=False):
 	"""
 	     Creates an autoname from the given key:
 
@@ -279,10 +284,10 @@ def make_autoname(key="", doctype="", doc=""):
 	                DE/09/01/0001 where 09 is the year, 01 is the month and 0001 is the series
 	"""
 	if key == "hash":
-		return frappe.generate_hash(doctype, 10)
+		return frappe.generate_hash(length=10)
 
 	series = NamingSeries(key)
-	return series.generate_next_name(doc)
+	return series.generate_next_name(doc, ignore_validate=ignore_validate)
 
 
 def parse_naming_series(
@@ -301,6 +306,7 @@ def parse_naming_series(
 	"""
 
 	name = ""
+	_sentinel = object()
 	if isinstance(parts, str):
 		parts = parts.split(".")
 
@@ -331,13 +337,11 @@ def parse_naming_series(
 			part = determine_consecutive_week_number(today)
 		elif e == "timestamp":
 			part = str(today)
-		elif e == "FY":
-			part = frappe.defaults.get_user_default("fiscal_year")
-		elif e.startswith("{") and doc:
+		elif doc and (e.startswith("{") or doc.get(e, _sentinel) is not _sentinel):
 			e = e.replace("{", "").replace("}", "")
 			part = doc.get(e)
-		elif doc and doc.get(e):
-			part = doc.get(e)
+		elif method := has_custom_parser(e):
+			part = frappe.get_attr(method[0])(doc, e)
 		else:
 			part = e
 
@@ -347,6 +351,11 @@ def parse_naming_series(
 			name += cstr(part).strip()
 
 	return name
+
+
+def has_custom_parser(e):
+	"""Returns true if the naming series part has a custom parser"""
+	return frappe.get_hooks("naming_series_variables", {}).get(e)
 
 
 def determine_consecutive_week_number(datetime):
@@ -551,9 +560,7 @@ def _format_autoname(autoname, doc):
 
 	def get_param_value_for_match(match):
 		param = match.group()
-		# trim braces
-		trimmed_param = param[1:-1]
-		return parse_naming_series([trimmed_param], doc=doc)
+		return parse_naming_series([param[1:-1]], doc=doc)
 
 	# Replace braced params with their parsed value
 	name = BRACED_PARAMS_PATTERN.sub(get_param_value_for_match, autoname_value)

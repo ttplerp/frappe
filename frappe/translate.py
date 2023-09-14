@@ -14,6 +14,7 @@ import json
 import operator
 import os
 import re
+from contextlib import contextmanager
 from csv import reader
 
 from babel.messages.extract import extract_python
@@ -51,6 +52,11 @@ TRANSLATE_PATTERN = re.compile(
 )
 REPORT_TRANSLATE_PATTERN = re.compile('"([^:,^"]*):')
 CSV_STRIP_WHITESPACE_PATTERN = re.compile(r"{\s?([0-9]+)\s?}")
+
+
+# Cache keys
+MERGED_TRANSLATION_KEY = "merged_translations"
+USER_TRANSLATION_KEY = "lang_user_translations"
 
 
 def get_language(lang_list: list = None) -> str:
@@ -164,7 +170,7 @@ def get_dict(fortype: str, name: str | None = None) -> dict[str, str]:
 	fortype = fortype.lower()
 	cache = frappe.cache()
 	asset_key = fortype + ":" + (name or "-")
-	translation_assets = cache.hget("translation_assets", frappe.local.lang, shared=True) or {}
+	translation_assets = cache.hget("translation_assets", frappe.local.lang) or {}
 
 	if asset_key not in translation_assets:
 		messages = []
@@ -204,7 +210,7 @@ def get_dict(fortype: str, name: str | None = None) -> dict[str, str]:
 		# remove untranslated
 		message_dict = {k: v for k, v in message_dict.items() if k != v}
 		translation_assets[asset_key] = message_dict
-		cache.hset("translation_assets", frappe.local.lang, translation_assets, shared=True)
+		cache.hset("translation_assets", frappe.local.lang, translation_assets)
 
 	translation_map: dict = translation_assets[asset_key]
 
@@ -215,7 +221,7 @@ def get_dict(fortype: str, name: str | None = None) -> dict[str, str]:
 
 def get_messages_for_boot():
 	"""Return all message translations that are required on boot."""
-	messages = get_full_dict(frappe.local.lang)
+	messages = get_all_translations(frappe.local.lang)
 	messages.update(get_dict_from_hooks("boot", None))
 
 	return messages
@@ -241,9 +247,9 @@ def make_dict_from_messages(messages, full_dict=None, load_user_translation=True
 	out = {}
 	if full_dict is None:
 		if load_user_translation:
-			full_dict = get_full_dict(frappe.local.lang)
+			full_dict = get_all_translations(frappe.local.lang)
 		else:
-			full_dict = load_lang(frappe.local.lang)
+			full_dict = get_translations_from_apps(frappe.local.lang)
 
 	for m in messages:
 		if m[1] in full_dict:
@@ -266,31 +272,34 @@ def get_lang_js(fortype: str, name: str) -> str:
 	return f"\n\n$.extend(frappe._messages, {json.dumps(get_dict(fortype, name))})"
 
 
-def get_full_dict(lang: str) -> dict[str, str]:
-	"""Load and return the entire translations dictionary for a language from :meth:`frape.cache`
+def get_all_translations(lang: str) -> dict[str, str]:
+	"""Load and return the entire translations dictionary for a language from apps + user translations.
 
 	:param lang: Language Code, e.g. `hi`
 	"""
 	if not lang:
 		return {}
 
-	# found in local, return!
-	if getattr(frappe.local, "lang_full_dict", None) is not None:
-		return frappe.local.lang_full_dict
+	def _merge_translations():
+		all_translations = get_translations_from_apps(lang).copy()
+		try:
+			# get user specific translation data
+			user_translations = get_user_translations(lang)
+			all_translations.update(user_translations)
+		except Exception:
+			pass
 
-	frappe.local.lang_full_dict = load_lang(lang)
+		return all_translations
 
 	try:
-		# get user specific translation data
-		user_translations = get_user_translations(lang)
-		frappe.local.lang_full_dict.update(user_translations)
+		return frappe.cache().hget(MERGED_TRANSLATION_KEY, lang, generator=_merge_translations)
 	except Exception:
-		pass
+		# People mistakenly call translation function on global variables
+		# where locals are not initalized, translations dont make much sense there
+		return {}
 
-	return frappe.local.lang_full_dict
 
-
-def load_lang(lang, apps=None):
+def get_translations_from_apps(lang, apps=None):
 	"""Combine all translations from `.csv` files in all `apps`.
 	For derivative languages (es-GT), take translations from the
 	base language (es) and then update translations from the child (es-GT)"""
@@ -298,22 +307,17 @@ def load_lang(lang, apps=None):
 	if lang == "en":
 		return {}
 
-	out = frappe.cache().hget("lang_full_dict", lang, shared=True)
-	if not out:
-		out = {}
-		for app in apps or frappe.get_all_apps(True):
-			path = os.path.join(frappe.get_pymodule_path(app), "translations", lang + ".csv")
-			out.update(get_translation_dict_from_file(path, lang, app) or {})
+	translations = {}
+	for app in apps or frappe.get_installed_apps(_ensure_on_bench=True):
+		path = os.path.join(frappe.get_pymodule_path(app), "translations", lang + ".csv")
+		translations.update(get_translation_dict_from_file(path, lang, app) or {})
+	if "-" in lang:
+		parent = lang.split("-", 1)[0]
+		parent_translations = get_translations_from_apps(parent)
+		parent_translations.update(translations)
+		return parent_translations
 
-		if "-" in lang:
-			parent = lang.split("-")[0]
-			parent_out = load_lang(parent)
-			parent_out.update(out)
-			out = parent_out
-
-		frappe.cache().hset("lang_full_dict", lang, out, shared=True)
-
-	return out or {}
+	return translations
 
 
 def get_translation_dict_from_file(path, lang, app, throw=False) -> dict[str, str]:
@@ -342,23 +346,22 @@ def get_translation_dict_from_file(path, lang, app, throw=False) -> dict[str, st
 def get_user_translations(lang):
 	if not frappe.db:
 		frappe.connect()
-	out = frappe.cache().hget("lang_user_translations", lang)
-	if out is None:
-		out = {}
-		user_translations = frappe.get_all(
+
+	def _read_from_db():
+		user_translations = {}
+		translations = frappe.get_all(
 			"Translation", fields=["source_text", "translated_text", "context"], filters={"language": lang}
 		)
 
-		for translation in user_translations:
-			key = translation.source_text
-			value = translation.translated_text
-			if translation.context:
-				key += ":" + translation.context
-			out[key] = value
+		for t in translations:
+			key = t.source_text
+			value = t.translated_text
+			if t.context:
+				key += ":" + t.context
+			user_translations[key] = value
+		return user_translations
 
-		frappe.cache().hset("lang_user_translations", lang, out)
-
-	return out
+	return frappe.cache().hget(USER_TRANSLATION_KEY, lang, generator=_read_from_db)
 
 
 def clear_cache():
@@ -368,9 +371,9 @@ def clear_cache():
 
 	# clear translations saved in boot cache
 	cache.delete_key("bootinfo")
-	cache.delete_key("lang_full_dict", shared=True)
-	cache.delete_key("translation_assets", shared=True)
-	cache.delete_key("lang_user_translations")
+	cache.delete_key("translation_assets")
+	cache.delete_key(USER_TRANSLATION_KEY)
+	cache.delete_key(MERGED_TRANSLATION_KEY)
 
 
 def get_messages_for_app(app, deduplicate=True):
@@ -679,7 +682,7 @@ def get_messages_from_include_files(app_name=None):
 def get_all_messages_from_js_files(app_name=None):
 	"""Extracts all translatable strings from app `.js` files"""
 	messages = []
-	for app in [app_name] if app_name else frappe.get_installed_apps():
+	for app in [app_name] if app_name else frappe.get_installed_apps(_ensure_on_bench=True):
 		if os.path.exists(frappe.get_app_path(app, "public")):
 			for basepath, folders, files in os.walk(frappe.get_app_path(app, "public")):
 				if "frappe/public/js/lib" in basepath:
@@ -1050,7 +1053,7 @@ def get_untranslated(lang, untranslated_file, get_all=False, app="_ALL_APPS"):
 				# replace \n with ||| so that internal linebreaks don't get split
 				f.write((escape_newlines(m[1]) + os.linesep).encode("utf-8"))
 	else:
-		full_dict = get_full_dict(lang)
+		full_dict = get_all_translations(lang)
 
 		for m in messages:
 			if not full_dict.get(m[1]):
@@ -1073,7 +1076,7 @@ def update_translations(lang, untranslated_file, translated_file, app="_ALL_APPS
 	:param untranslated_file: File path with the messages in English.
 	:param translated_file: File path with messages in language to be updated."""
 	clear_cache()
-	full_dict = get_full_dict(lang)
+	full_dict = get_all_translations(lang)
 
 	def restore_newlines(s):
 		return (
@@ -1110,7 +1113,7 @@ def update_translations(lang, untranslated_file, translated_file, app="_ALL_APPS
 def import_translations(lang, path):
 	"""Import translations from file in standard format"""
 	clear_cache()
-	full_dict = get_full_dict(lang)
+	full_dict = get_all_translations(lang)
 	full_dict.update(get_translation_dict_from_file(path, lang, "import"))
 
 	for app in frappe.get_all_apps(True):
@@ -1140,7 +1143,9 @@ def write_translations_file(app, lang, full_dict=None, app_messages=None):
 
 	tpath = frappe.get_pymodule_path(app, "translations")
 	frappe.create_folder(tpath)
-	write_csv_file(os.path.join(tpath, lang + ".csv"), app_messages, full_dict or get_full_dict(lang))
+	write_csv_file(
+		os.path.join(tpath, lang + ".csv"), app_messages, full_dict or get_all_translations(lang)
+	)
 
 
 def send_translations(translation_dict):
@@ -1166,7 +1171,7 @@ def rename_language(old_name, new_name):
 
 	language_in_system_settings = frappe.db.get_single_value("System Settings", "language")
 	if language_in_system_settings == old_name:
-		frappe.db.set_value("System Settings", "System Settings", "language", new_name)
+		frappe.db.set_single_value("System Settings", "language", new_name)
 
 	frappe.db.sql(
 		"""update `tabUser` set language=%(new_name)s where language=%(old_name)s""",
@@ -1302,3 +1307,39 @@ def get_translated_doctypes():
 		"Property Setter", {"property": "translated_doctype", "value": "1"}, pluck="doc_type"
 	)
 	return unique(dts + custom_dts)
+
+
+@contextmanager
+def print_language(language: str):
+	"""Ensure correct globals for printing in a specific language.
+
+	Usage:
+
+	```
+	with print_language("de"):
+	    html = frappe.get_print( ... )
+	```
+	"""
+	if not language or language == frappe.local.lang:
+		# do nothing
+		yield
+		return
+
+	# remember original values
+	_lang = frappe.local.lang
+	_jenv = frappe.local.jenv
+
+	# set language, empty any existing lang_full_dict and jenv
+	frappe.local.lang = language
+	frappe.local.jenv = None
+
+	yield
+
+	# restore original values
+	frappe.local.lang = _lang
+	frappe.local.jenv = _jenv
+
+
+# Backward compatibility
+get_full_dict = get_all_translations
+load_lang = get_translations_from_apps

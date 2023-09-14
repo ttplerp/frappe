@@ -53,8 +53,8 @@ frappe.views.BaseList = class BaseList {
 
 		this.fields = [];
 		this.filters = [];
-		this.sort_by = "modified";
-		this.sort_order = "desc";
+		this.sort_by = this.meta.sort_field || "modified";
+		this.sort_order = this.meta.sort_order || "desc";
 
 		// Setup buttons
 		this.primary_action = null;
@@ -77,12 +77,12 @@ frappe.views.BaseList = class BaseList {
 			.then((doc) => (this.list_view_settings = doc.message || {}));
 	}
 
-	setup_fields() {
-		this.set_fields();
+	async setup_fields() {
+		await this.set_fields();
 		this.build_fields();
 	}
 
-	set_fields() {
+	async set_fields() {
 		let fields = [].concat(frappe.model.std_fields_list, this.meta.title_field);
 
 		fields.forEach((f) => this._add_field(f));
@@ -196,7 +196,7 @@ frappe.views.BaseList = class BaseList {
 			Map: "map",
 		};
 
-		if (frappe.boot.desk_settings.view_switcher) {
+		if (frappe.boot.desk_settings.view_switcher && !this.meta.force_re_route_to_default_view) {
 			/* @preserve
 			for translation, don't remove
 			__("List View") __("Report View") __("Dashboard View") __("Gantt View"),
@@ -773,6 +773,8 @@ class FilterArea {
 							"HTML Editor",
 							"Data",
 							"Code",
+							"Phone",
+							"JSON",
 							"Read Only",
 						].includes(fieldtype)
 					) {
@@ -829,22 +831,31 @@ class FilterArea {
 
 	make_filter_list() {
 		$(`<div class="filter-selector">
-			<button class="btn btn-default btn-sm filter-button">
-				<span class="filter-icon">
-					${frappe.utils.icon("filter")}
-				</span>
-				<span class="button-label hidden-xs">
+			<div class="btn-group">
+				<button class="btn btn-default btn-sm filter-button">
+					<span class="filter-icon">
+						${frappe.utils.icon("filter")}
+					</span>
+					<span class="button-label hidden-xs">
 					${__("Filter")}
-				<span>
-			</button>
+					<span>
+				</button>
+				<button class="btn btn-default btn-sm filter-x-button" title="${__("Clear all filters")}">
+					<span class="filter-icon">
+						${frappe.utils.icon("filter-x")}
+					</span>
+				</button>
+			</div>
 		</div>`).appendTo(this.$filter_list_wrapper);
 
 		this.filter_button = this.$filter_list_wrapper.find(".filter-button");
+		this.filter_x_button = this.$filter_list_wrapper.find(".filter-x-button");
 		this.filter_list = new frappe.ui.FilterGroup({
 			base_list: this.list_view,
 			parent: this.$filter_list_wrapper,
 			doctype: this.list_view.doctype,
 			filter_button: this.filter_button,
+			filter_x_button: this.filter_x_button,
 			default_filters: [],
 			on_change: () => this.refresh_list_view(),
 		});

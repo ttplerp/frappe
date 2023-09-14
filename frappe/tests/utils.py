@@ -3,6 +3,8 @@ import datetime
 import signal
 import unittest
 from contextlib import contextmanager
+from typing import Sequence
+from unittest.mock import patch
 
 import frappe
 from frappe.model.base_document import BaseDocument
@@ -26,9 +28,9 @@ class FrappeTestCase(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.TEST_SITE = getattr(frappe.local, "site", None) or cls.TEST_SITE
+		cls.ADMIN_PASSWORD = frappe.get_conf(cls.TEST_SITE).admin_password
 		# flush changes done so far to avoid flake
 		frappe.db.commit()
-		frappe.db.begin()
 		if cls.SHOW_TRANSACTION_COMMIT_WARNINGS:
 			frappe.db.add_before_commit(_commit_watcher)
 
@@ -37,6 +39,10 @@ class FrappeTestCase(unittest.TestCase):
 		cls.addClassCleanup(_rollback_db)
 
 		return super().setUpClass()
+
+	def assertSequenceSubset(self, larger: Sequence, smaller: Sequence, msg=None):
+		"""Assert that `expected` is a subset of `actual`."""
+		self.assertTrue(set(smaller).issubset(set(larger)), msg=msg)
 
 	# --- Frappe Framework specific assertions
 	def assertDocumentEqual(self, expected, actual):
@@ -54,12 +60,14 @@ class FrappeTestCase(unittest.TestCase):
 			else:
 				self._compare_field(value, actual.get(field), actual, field)
 
-	def _compare_field(self, expected, actual, doc, field):
+	def _compare_field(self, expected, actual, doc: BaseDocument, field: str):
 		msg = f"{field} should be same."
 
 		if isinstance(expected, float):
 			precision = doc.precision(field)
-			self.assertAlmostEqual(expected, actual, f"{field} should be same to {precision} digits")
+			self.assertAlmostEqual(
+				expected, actual, places=precision, msg=f"{field} should be same to {precision} digits"
+			)
 		elif isinstance(expected, (bool, int)):
 			self.assertEqual(expected, cint(actual), msg=msg)
 		elif isinstance(expected, datetime_like_types):
@@ -69,16 +77,38 @@ class FrappeTestCase(unittest.TestCase):
 
 	@contextmanager
 	def assertQueryCount(self, count):
+		queries = []
+
 		def _sql_with_count(*args, **kwargs):
-			frappe.db.sql_query_count += 1
-			return orig_sql(*args, **kwargs)
+			ret = orig_sql(*args, **kwargs)
+			queries.append(frappe.db.last_query)
+			return ret
 
 		try:
 			orig_sql = frappe.db.sql
-			frappe.db.sql_query_count = 0
 			frappe.db.sql = _sql_with_count
 			yield
-			self.assertLessEqual(frappe.db.sql_query_count, count)
+			self.assertLessEqual(len(queries), count, msg="Queries executed: " + "\n\n".join(queries))
+		finally:
+			frappe.db.sql = orig_sql
+
+	@contextmanager
+	def assertRowsRead(self, count):
+		rows_read = 0
+
+		def _sql_with_count(*args, **kwargs):
+			nonlocal rows_read
+
+			ret = orig_sql(*args, **kwargs)
+			# count of last touched rows as per DB-API 2.0 https://peps.python.org/pep-0249/#rowcount
+			rows_read += cint(frappe.db._cursor.rowcount)
+			return ret
+
+		try:
+			orig_sql = frappe.db.sql
+			frappe.db.sql = _sql_with_count
+			yield
+			self.assertLessEqual(rows_read, count, msg="Queries read more rows than expected")
 		finally:
 			frappe.db.sql = orig_sql
 
@@ -106,7 +136,7 @@ def _restore_thread_locals(flags):
 	frappe.local.conf = frappe._dict(frappe.get_site_config())
 	frappe.local.cache = {}
 	frappe.local.lang = "en"
-	frappe.local.lang_full_dict = None
+	frappe.local.preload_assets = {"style": [], "script": []}
 
 
 @contextmanager
@@ -133,7 +163,7 @@ def change_settings(doctype, settings_dict):
 		# change setting
 		for key, value in settings_dict.items():
 			setattr(settings, key, value)
-		settings.save()
+		settings.save(ignore_permissions=True)
 		# singles are cached by default, clear to avoid flake
 		frappe.db.value_cache[settings] = {}
 		yield  # yield control to calling function
@@ -143,7 +173,7 @@ def change_settings(doctype, settings_dict):
 		settings = frappe.get_doc(doctype)
 		for key, value in previous_settings.items():
 			setattr(settings, key, value)
-		settings.save()
+		settings.save(ignore_permissions=True)
 
 
 def timeout(seconds=30, error_message="Test timed out."):
@@ -167,3 +197,16 @@ def timeout(seconds=30, error_message="Test timed out."):
 		return wrapper
 
 	return decorator
+
+
+@contextmanager
+def patch_hooks(overridden_hoooks):
+	get_hooks = frappe.get_hooks
+
+	def patched_hooks(hook=None, default="_KEEP_DEFAULT_LIST", app_name=None):
+		if hook in overridden_hoooks:
+			return overridden_hoooks[hook]
+		return get_hooks(hook, default, app_name)
+
+	with patch.object(frappe, "get_hooks", patched_hooks):
+		yield

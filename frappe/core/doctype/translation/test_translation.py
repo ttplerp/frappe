@@ -3,6 +3,7 @@
 import frappe
 from frappe import _
 from frappe.tests.utils import FrappeTestCase
+from frappe.translate import clear_cache
 
 
 class TestTranslation(FrappeTestCase):
@@ -11,20 +12,17 @@ class TestTranslation(FrappeTestCase):
 
 	def tearDown(self):
 		frappe.local.lang = "en"
-		clear_translation_cache()
+		clear_cache()
 
 	def test_doctype(self):
 		translation_data = get_translation_data()
 		for key, val in translation_data.items():
 			frappe.local.lang = key
 
-			clear_translation_cache()
 			translation = create_translation(key, val)
 			self.assertEqual(_(val[0]), val[1])
 
 			frappe.delete_doc("Translation", translation.name)
-			clear_translation_cache()
-
 			self.assertEqual(_(val[0]), val[0])
 
 	def test_parent_language(self):
@@ -39,21 +37,21 @@ class TestTranslation(FrappeTestCase):
 
 		frappe.local.lang = "es"
 
-		clear_translation_cache()
 		self.assertTrue(_(data[0][0]), data[0][1])
 
-		clear_translation_cache()
 		self.assertTrue(_(data[1][0]), data[1][1])
 
 		frappe.local.lang = "es-MX"
 
 		# different translation for es-MX
-		clear_translation_cache()
 		self.assertTrue(_(data[2][0]), data[2][1])
 
 		# from spanish (general)
-		clear_translation_cache()
 		self.assertTrue(_(data[1][0]), data[1][1])
+
+	def test_multi_language_translations(self):
+		source = "User"
+		self.assertNotEqual(_(source, lang="de"), _(source, lang="es"))
 
 	def test_html_content_data_translation(self):
 		source = """
@@ -110,8 +108,3 @@ def create_translation(key, val):
 	translation.translated_text = val[1]
 	translation.save()
 	return translation
-
-
-def clear_translation_cache():
-	frappe.local.lang_full_dict = None
-	frappe.cache().delete_key("lang_full_dict", shared=True)

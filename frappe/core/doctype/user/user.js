@@ -17,6 +17,16 @@ frappe.ui.form.on("User", {
 		}
 	},
 
+	time_zone: function (frm) {
+		if (frm.doc.time_zone && frm.doc.time_zone.startsWith("Etc")) {
+			frm.set_df_property(
+				"time_zone",
+				"description",
+				__("Note: Etc timezones have their signs reversed.")
+			);
+		}
+	},
+
 	role_profile_name: function (frm) {
 		if (frm.doc.role_profile_name) {
 			frappe.call({
@@ -205,7 +215,10 @@ frappe.ui.form.on("User", {
 				});
 			}
 
-			if (frappe.session.user == doc.name || frappe.user.has_role("System Manager")) {
+			if (
+				cint(frappe.boot.sysdefaults.enable_two_factor_auth) &&
+				(frappe.session.user == doc.name || frappe.user.has_role("System Manager"))
+			) {
 				frm.add_custom_button(
 					__("Reset OTP Secret"),
 					function () {
@@ -259,6 +272,7 @@ frappe.ui.form.on("User", {
 			}
 			frm.dirty();
 		}
+		frm.trigger("time_zone");
 	},
 	validate: function (frm) {
 		if (frm.roles_editor) {

@@ -1,6 +1,7 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: MIT. See LICENSE
 
+import gc
 import logging
 import os
 
@@ -21,7 +22,7 @@ import frappe.utils.response
 from frappe import _
 from frappe.core.doctype.comment.comment import update_comments_in_parent_after_request
 from frappe.middlewares import StaticDataMiddleware
-from frappe.utils import get_site_name, sanitize_html
+from frappe.utils import cint, get_site_name, sanitize_html
 from frappe.utils.error import make_error_snapshot
 from frappe.website.serve import get_response
 
@@ -44,6 +45,33 @@ class RequestContext:
 		frappe.destroy()
 
 
+# If gc.freeze is done then importing modules before forking allows us to share the memory
+if frappe._tune_gc:
+	import bleach
+
+	import frappe.boot
+	import frappe.client
+	import frappe.core.doctype.file.file
+	import frappe.core.doctype.user.user
+	import frappe.database.mariadb.database  # Load database related utils
+	import frappe.database.query
+	import frappe.desk.desktop  # workspace
+	import frappe.desk.form.save
+	import frappe.model.db_query
+	import frappe.query_builder
+	import frappe.utils.background_jobs  # Enqueue is very common
+	import frappe.utils.data  # common utils
+	import frappe.utils.jinja  # web page rendering
+	import frappe.utils.jinja_globals
+	import frappe.utils.redis_wrapper  # Exact redis_wrapper
+	import frappe.utils.safe_exec
+	import frappe.website.path_resolver  # all the page types and resolver
+	import frappe.website.router  # Website router
+	import frappe.website.website_generator  # web page doctypes
+
+# end: module pre-loading
+
+
 @local_manager.middleware
 @Request.application
 def application(request: Request):
@@ -54,9 +82,6 @@ def application(request: Request):
 
 		init_request(request)
 
-		frappe.recorder.record()
-		frappe.monitor.start()
-		frappe.rate_limiter.apply()
 		frappe.api.validate_auth()
 
 		if request.method == "OPTIONS":
@@ -87,15 +112,21 @@ def application(request: Request):
 		response = handle_exception(e)
 
 	else:
-		rollback = after_request(rollback)
+		rollback = sync_database(rollback)
 
 	finally:
-		if request.method in ("POST", "PUT") and frappe.db and rollback:
+		# Important note:
+		# this function *must* always return a response, hence any exception thrown outside of
+		# try..catch block like this finally block needs to be handled appropriately.
+
+		if request.method in UNSAFE_HTTP_METHODS and frappe.db and rollback:
 			frappe.db.rollback()
 
-		frappe.rate_limiter.update()
-		frappe.monitor.stop(response)
-		frappe.recorder.dump()
+		try:
+			run_after_request_hooks(request, response)
+		except Exception as e:
+			# We can not handle exceptions safely here.
+			frappe.logger().error("Failed to run after request hook", exc_info=True)
 
 		log_request(request, response)
 		process_response(response)
@@ -104,29 +135,61 @@ def application(request: Request):
 	return response
 
 
+def run_after_request_hooks(request, response):
+	if not getattr(frappe.local, "initialised", False):
+		return
+
+	for after_request_task in frappe.get_hooks("after_request"):
+		frappe.call(after_request_task, response=response, request=request)
+
+
 def init_request(request):
 	frappe.local.request = request
 	frappe.local.is_ajax = frappe.get_request_header("X-Requested-With") == "XMLHttpRequest"
 
 	site = _site or request.headers.get("X-Frappe-Site-Name") or get_site_name(request.host)
-	frappe.init(site=site, sites_path=_sites_path)
+	frappe.init(site=site, sites_path=_sites_path, force=True)
 
 	if not (frappe.local.conf and frappe.local.conf.db_name):
 		# site does not exist
 		raise NotFound
 
-	if frappe.local.conf.get("maintenance_mode"):
+	if frappe.local.conf.maintenance_mode:
 		frappe.connect()
-		raise frappe.SessionStopped("Session Stopped")
+		if frappe.local.conf.allow_reads_during_maintenance:
+			setup_read_only_mode()
+		else:
+			raise frappe.SessionStopped("Session Stopped")
 	else:
 		frappe.connect(set_admin_as_user=False)
 
-	request.max_content_length = frappe.local.conf.get("max_file_size") or 10 * 1024 * 1024
+	request.max_content_length = cint(frappe.local.conf.get("max_file_size")) or 10 * 1024 * 1024
 
 	make_form_dict(request)
 
 	if request.method != "OPTIONS":
 		frappe.local.http_request = frappe.auth.HTTPRequest()
+
+	for before_request_task in frappe.get_hooks("before_request"):
+		frappe.call(before_request_task)
+
+
+def setup_read_only_mode():
+	"""During maintenance_mode reads to DB can still be performed to reduce downtime. This
+	function sets up read only mode
+
+	- Setting global flag so other pages, desk and database can know that we are in read only mode.
+	- Setup read only database access either by:
+	    - Connecting to read replica if one exists
+	    - Or setting up read only SQL transactions.
+	"""
+	frappe.flags.read_only = True
+
+	# If replica is available then just connect replica, else setup read only transaction.
+	if frappe.conf.read_from_replica:
+		frappe.connect_replica()
+	else:
+		frappe.db.begin(read_only=True)
 
 
 def log_request(request, response):
@@ -230,6 +293,12 @@ def handle_exception(e):
 		or (frappe.local.request.path.startswith("/api/") and not accept_header.startswith("text"))
 	)
 
+	if not frappe.session.user:
+		# If session creation fails then user won't be unset. This causes a lot of code that
+		# assumes presence of this to fail. Session creation fails => guest or expired login
+		# usually.
+		frappe.session.user = "Guest"
+
 	if respond_as_json:
 		# handle ajax responses first
 		# if the request is ajax, send back the trace or error message
@@ -303,19 +372,22 @@ def handle_exception(e):
 	return response
 
 
-def after_request(rollback):
+def sync_database(rollback: bool) -> bool:
 	# if HTTP method would change server state, commit if necessary
-	if frappe.db and (
-		frappe.local.flags.commit or frappe.local.request.method in UNSAFE_HTTP_METHODS
+	if (
+		frappe.db
+		and (frappe.local.flags.commit or frappe.local.request.method in UNSAFE_HTTP_METHODS)
+		and frappe.db.transaction_writes
 	):
-		if frappe.db.transaction_writes:
-			frappe.db.commit()
-			rollback = False
+		frappe.db.commit()
+		rollback = False
+	elif frappe.db:
+		frappe.db.rollback()
+		rollback = False
 
 	# update session
-	if getattr(frappe.local, "session_obj", None):
-		updated_in_db = frappe.local.session_obj.update()
-		if updated_in_db:
+	if session := getattr(frappe.local, "session_obj", None):
+		if session.update():
 			frappe.db.commit()
 			rollback = False
 
@@ -357,8 +429,23 @@ def serve(
 		"0.0.0.0",
 		int(port),
 		application,
+		exclude_patterns=["test_*"],
 		use_reloader=False if in_test_env else not no_reload,
 		use_debugger=not in_test_env,
 		use_evalex=not in_test_env,
 		threaded=not no_threading,
 	)
+
+
+# Both Gunicorn and RQ use forking to spawn workers. In an ideal world, the fork should be sharing
+# most of the memory if there are no writes made to data because of Copy on Write, however,
+# python's GC is not CoW friendly and writes to data even if user-code doesn't. Specifically, the
+# generational GC which stores and mutates every python object: `PyGC_Head`
+#
+# Calling gc.freeze() moves all the objects imported so far into permanant generation and hence
+# doesn't mutate `PyGC_Head`
+#
+# Refer to issue for more info: https://github.com/frappe/frappe/issues/18927
+if frappe._tune_gc:
+	gc.collect()  # clean up any garbage created so far before freeze
+	gc.freeze()

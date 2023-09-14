@@ -26,9 +26,9 @@ export default class QuickListWidget extends Widget {
 
 	setup_add_new_button() {
 		this.add_new_button = $(
-			`<div class="add-new btn btn-xs pull-right" title="${__(
-				"Add New " + this.document_type
-			)}">
+			`<div class="add-new btn btn-xs pull-right"
+			title="${__("Add New")}  ${__(this.document_type)}
+			">
 				${frappe.utils.icon("add", "sm")}
 			</div>`
 		);
@@ -99,7 +99,7 @@ export default class QuickListWidget extends Widget {
 		];
 		let me = this;
 		this.dialog = new frappe.ui.Dialog({
-			title: __("Set Filters for {0}", [this.document_type]),
+			title: __("Set Filters for {0}", [__(this.document_type)]),
 			fields: fields,
 			primary_action: function () {
 				let old_filter = me.quick_list_filter;
@@ -114,7 +114,7 @@ export default class QuickListWidget extends Widget {
 					me.set_body();
 				}
 			},
-			primary_action_label: "Set",
+			primary_action_label: __("Set"),
 		});
 
 		this.dialog.show();
@@ -161,7 +161,10 @@ export default class QuickListWidget extends Widget {
 			$quick_list_item
 		);
 
-		$quick_list_item.click(() => {
+		$quick_list_item.click((e) => {
+			if (e.ctrlKey || e.metaKey) {
+				frappe.open_in_new_tab = true;
+			}
 			frappe.set_route(`${frappe.utils.get_form_link(this.document_type, doc.name)}`);
 		});
 
@@ -238,12 +241,20 @@ export default class QuickListWidget extends Widget {
 		this.footer.empty();
 
 		let filters = frappe.utils.get_filter_from_json(this.quick_list_filter);
-		if (filters) {
-			frappe.route_options = filters;
-		}
+
 		let route = frappe.utils.generate_route({ type: "doctype", name: this.document_type });
 		this.see_all_button = $(`
-			<a href="${route}"class="see-all btn btn-xs">View List</a>
+			<div class="see-all btn btn-xs">${__("View List")}</div>
 		`).appendTo(this.footer);
+
+		this.see_all_button.click((e) => {
+			if (e.ctrlKey || e.metaKey) {
+				frappe.open_in_new_tab = true;
+			}
+			if (filters) {
+				frappe.route_options = filters;
+			}
+			frappe.set_route(route);
+		});
 	}
 }

@@ -3,9 +3,7 @@
 
 import frappe
 from frappe import _, msgprint
-from frappe.query_builder import DocType, Interval
-from frappe.query_builder.functions import Now
-from frappe.utils import cint, get_url, now_datetime
+from frappe.utils import cint, cstr, get_url, now_datetime
 from frappe.utils.verified_command import get_signed_params, verify_request
 
 
@@ -91,9 +89,9 @@ def get_unsubcribed_url(
 	reference_doctype, reference_name, email, unsubscribe_method, unsubscribe_params
 ):
 	params = {
-		"email": email.encode("utf-8"),
-		"doctype": reference_doctype.encode("utf-8"),
-		"name": reference_name.encode("utf-8"),
+		"email": cstr(email),
+		"doctype": cstr(reference_doctype),
+		"name": cstr(reference_name),
 	}
 	if unsubscribe_params:
 		params.update(unsubscribe_params)
@@ -109,7 +107,7 @@ def get_unsubcribed_url(
 @frappe.whitelist(allow_guest=True)
 def unsubscribe(doctype, name, email):
 	# unsubsribe from comments and communications
-	if not verify_request():
+	if not frappe.flags.in_test and not verify_request():
 		return
 
 	try:
@@ -142,6 +140,7 @@ def return_unsubscribed_page(email, doctype, name):
 def flush(from_test=False):
 	"""flush email queue, every time: called from scheduler"""
 	from frappe.email.doctype.email_queue.email_queue import send_mail
+	from frappe.utils.background_jobs import get_jobs
 
 	# To avoid running jobs inside unit tests
 	if frappe.are_emails_muted():
@@ -151,11 +150,25 @@ def flush(from_test=False):
 	if cint(frappe.db.get_default("suspend_email_queue")) == 1:
 		return
 
+	try:
+		queued_jobs = set(get_jobs(site=frappe.local.site, key="job_name")[frappe.local.site])
+	except Exception:
+		queued_jobs = set()
+
 	for row in get_queue():
 		try:
-			func = send_mail if from_test else send_mail.enqueue
-			is_background_task = not from_test
-			func(email_queue_name=row.name, is_background_task=is_background_task)
+			job_name = f"email_queue_sendmail_{row.name}"
+			if job_name not in queued_jobs:
+				frappe.enqueue(
+					method=send_mail,
+					email_queue_name=row.name,
+					is_background_task=not from_test,
+					now=from_test,
+					job_name=job_name,
+					queue="short",
+				)
+			else:
+				frappe.logger().debug(f"Not queueing job {job_name} because it is in queue already")
 		except Exception:
 			frappe.get_doc("Email Queue", row.name).log_error()
 

@@ -86,7 +86,10 @@ const NODE_PATHS = [].concat(
 
 execute()
 	.then(() => RUN_BUILD_COMMAND && run_build_command_for_apps(APPS))
-	.catch((e) => console.error(e));
+	.catch((e) => {
+		console.error(e);
+		throw e;
+	});
 
 if (WATCH_MODE) {
 	// listen for open files in editor event
@@ -103,7 +106,7 @@ async function execute() {
 		log_error("There were some problems during build");
 		log();
 		log(chalk.dim(e.stack));
-		if (process.env.CI) {
+		if (process.env.CI || PRODUCTION) {
 			process.kill(process.pid);
 		}
 		return;
@@ -182,7 +185,7 @@ function get_all_files_to_build(apps) {
 	for (let app of apps) {
 		let public_path = get_public_path(app);
 		include_patterns.push(
-			path.resolve(public_path, "**", "*.bundle.{js,ts,css,sass,scss,less,styl}")
+			path.resolve(public_path, "**", "*.bundle.{js,ts,css,sass,scss,less,styl,jsx}")
 		);
 		ignore_patterns.push(
 			path.resolve(public_path, "node_modules"),

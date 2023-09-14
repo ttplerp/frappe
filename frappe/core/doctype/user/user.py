@@ -6,7 +6,7 @@ import frappe
 import frappe.defaults
 import frappe.permissions
 import frappe.share
-from frappe import _, msgprint, throw
+from frappe import STANDARD_USERS, _, msgprint, throw
 from frappe.core.doctype.user_type.user_type import user_linked_with_permission_on_doctype
 from frappe.desk.doctype.notification_settings.notification_settings import (
 	create_notification_settings,
@@ -22,17 +22,16 @@ from frappe.utils import (
 	flt,
 	format_datetime,
 	get_formatted_email,
-	get_time_zone,
+	get_system_timezone,
 	has_gravatar,
 	now_datetime,
 	today,
 )
+from frappe.utils.deprecations import deprecated
 from frappe.utils.password import check_password, get_password_reset_limit
 from frappe.utils.password import update_password as _update_password
 from frappe.utils.user import get_system_managers
 from frappe.website.utils import is_signup_disabled
-
-STANDARD_USERS = frappe.STANDARD_USERS
 
 
 class User(Document):
@@ -53,7 +52,7 @@ class User(Document):
 	def onload(self):
 		from frappe.config import get_modules_from_all_apps
 
-		self.set_onload("all_modules", [m.get("module_name") for m in get_modules_from_all_apps()])
+		self.set_onload("all_modules", sorted(m.get("module_name") for m in get_modules_from_all_apps()))
 
 	def before_insert(self):
 		self.flags.in_insert = True
@@ -76,6 +75,8 @@ class User(Document):
 			self.validate_email_type(self.email)
 			self.validate_email_type(self.name)
 		self.add_system_manager_role()
+		self.populate_role_profile_roles()
+		self.check_roles_added()
 		self.set_system_user()
 		self.set_full_name()
 		self.check_enable_disable()
@@ -85,7 +86,6 @@ class User(Document):
 		self.remove_disabled_roles()
 		self.validate_user_email_inbox()
 		ask_pass_update()
-		self.validate_roles()
 		self.validate_allowed_modules()
 		self.validate_user_image()
 		self.set_time_zone()
@@ -98,11 +98,15 @@ class User(Document):
 		):
 			self.set_social_login_userid("frappe", frappe.generate_hash(length=39))
 
-	def validate_roles(self):
+	def populate_role_profile_roles(self):
 		if self.role_profile_name:
 			role_profile = frappe.get_doc("Role Profile", self.role_profile_name)
 			self.set("roles", [])
 			self.append_roles(*[role.role for role in role_profile.roles])
+
+	@deprecated
+	def validate_roles(self):
+		self.populate_role_profile_roles()
 
 	def validate_allowed_modules(self):
 		if self.module_profile:
@@ -123,10 +127,20 @@ class User(Document):
 		now = frappe.flags.in_test or frappe.flags.in_install
 		self.send_password_notification(self.__new_password)
 		frappe.enqueue(
-			"frappe.core.doctype.user.user.create_contact", user=self, ignore_mandatory=True, now=now
+			"frappe.core.doctype.user.user.create_contact",
+			user=self,
+			ignore_mandatory=True,
+			now=now,
+			enqueue_after_commit=True,
 		)
-		if self.name not in ("Administrator", "Guest") and not self.user_image:
-			frappe.enqueue("frappe.core.doctype.user.user.update_gravatar", name=self.name, now=now)
+
+		if self.name not in STANDARD_USERS and not self.user_image:
+			frappe.enqueue(
+				"frappe.core.doctype.user.user.update_gravatar",
+				name=self.name,
+				now=now,
+				enqueue_after_commit=True,
+			)
 
 		# Set user selected timezone
 		if self.time_zone:
@@ -237,7 +251,10 @@ class User(Document):
 		)
 
 	def share_with_self(self):
-		frappe.share.add(
+		if self.name in STANDARD_USERS:
+			return
+
+		frappe.share.add_docshare(
 			self.doctype, self.name, self.name, write=1, share=1, flags={"ignore_share_permission": True}
 		)
 
@@ -270,6 +287,10 @@ class User(Document):
 				self.email_new_password(new_password)
 
 		except frappe.OutgoingEmailError:
+			frappe.clear_last_message()
+			frappe.msgprint(
+				_("Please setup default outgoing Email Account from Settings > Email Account"), alert=True
+			)
 			# email server not set, don't send email
 			self.log_error("Unable to send new password notification")
 
@@ -579,7 +600,7 @@ class User(Document):
 		if len(email_accounts) != len(set(email_accounts)):
 			frappe.throw(_("Email Account added multiple times"))
 
-	def get_social_login_userid(self, provider):
+	def get_social_login_userid(self, provider: str):
 		try:
 			for p in self.social_logins:
 				if p.provider == provider:
@@ -637,7 +658,22 @@ class User(Document):
 
 	def set_time_zone(self):
 		if not self.time_zone:
-			self.time_zone = get_time_zone()
+			self.time_zone = get_system_timezone()
+
+	def check_roles_added(self):
+		if self.user_type != "System User" or self.roles or not self.is_new():
+			return
+
+		frappe.msgprint(
+			_("Newly created user {0} has no roles enabled.").format(frappe.bold(self.name)),
+			title=_("No Roles Specified"),
+			indicator="orange",
+			primary_action={
+				"label": _("Add Roles"),
+				"client_action": "frappe.set_route",
+				"args": ["Form", self.doctype, self.name],
+			},
+		)
 
 
 @frappe.whitelist()
@@ -891,7 +927,7 @@ def reset_password(user):
 			title=_("Password Email Sent"),
 		)
 	except frappe.DoesNotExistError:
-		frappe.local.response["http_status_code"] = 400
+		frappe.local.response["http_status_code"] = 404
 		frappe.clear_messages()
 		return "not found"
 
@@ -901,6 +937,7 @@ def reset_password(user):
 def user_query(doctype, txt, searchfield, start, page_len, filters):
 	from frappe.desk.reportview import get_filters_cond, get_match_cond
 
+	doctype = "User"
 	conditions = []
 
 	user_type_condition = "and user_type != 'Website User'"

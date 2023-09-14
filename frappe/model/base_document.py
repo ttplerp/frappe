@@ -11,6 +11,7 @@ from frappe.model import (
     default_fields,
     display_fieldtypes,
     float_like_fields,
+    get_permitted_fields,
     table_fields,
 )
 from frappe.model.docstatus import DocStatus
@@ -51,7 +52,7 @@ def get_controller(doctype):
         from frappe.utils.nestedset import NestedSet
 
         module_name, custom = frappe.db.get_value(
-            "DocType", doctype, ("module", "custom"), cache=True
+            "DocType", doctype, ("module", "custom"), cache=not frappe.flags.in_migrate
         ) or ("Core", False)
 
         if custom:
@@ -83,7 +84,7 @@ def get_controller(doctype):
                 raise ImportError(doctype)
         return _class
 
-    if frappe.local.dev_server:
+    if frappe.local.dev_server or frappe.flags.in_migrate:
         return _get_controller()
 
     site_controllers = frappe.controllers.setdefault(frappe.local.site, {})
@@ -99,8 +100,10 @@ class BaseDocument:
         "meta",
         "_meta",
         "flags",
+        "parent_doc",
         "_table_fields",
         "_valid_columns",
+        "_doc_before_save",
         "_table_fieldnames",
         "_reserved_keywords",
         "dont_update_if_missing",
@@ -110,12 +113,7 @@ class BaseDocument:
         if d.get("doctype"):
             self.doctype = d["doctype"]
 
-        self._table_fieldnames = (
-            d["_table_fieldnames"]  # from cache
-            if "_table_fieldnames" in d
-            else {df.fieldname for df in self._get_table_fields()}
-        )
-
+        self._table_fieldnames = {df.fieldname for df in self._get_table_fields()}
         self.update(d)
         self.dont_update_if_missing = []
 
@@ -162,8 +160,9 @@ class BaseDocument:
         if "name" in d:
             self.name = d["name"]
 
+        ignore_children = hasattr(self, "flags") and self.flags.ignore_children
         for key, value in d.items():
-            self.set(key, value)
+            self.set(key, value, as_value=ignore_children)
 
         return self
 
@@ -300,7 +299,7 @@ class BaseDocument:
             return DOCTYPE_TABLE_FIELDS
 
         # child tables don't have child tables
-        if self.doctype in DOCTYPES_FOR_DOCTYPE or getattr(self, "parentfield", None):
+        if self.doctype in DOCTYPES_FOR_DOCTYPE:
             return ()
 
         return self.meta.get_table_fields()
@@ -313,19 +312,26 @@ class BaseDocument:
         ignore_virtual=False,
     ) -> dict:
         d = _dict()
+        permitted_fields = get_permitted_fields(
+            doctype=self.doctype, parenttype=getattr(self, "parenttype", None)
+        )
+
         for fieldname in self.meta.get_valid_columns():
+            field_value = getattr(self, fieldname, None)
+
             # column is valid, we can use getattr
-            d[fieldname] = getattr(self, fieldname, None)
+            d[fieldname] = field_value
 
             # if no need for sanitization and value is None, continue
             if not sanitize and d[fieldname] is None:
                 continue
 
             df = self.meta.get_field(fieldname)
+            is_virtual_field = getattr(df, "is_virtual", False)
 
             if df:
-                if getattr(df, "is_virtual", False):
-                    if ignore_virtual:
+                if is_virtual_field:
+                    if ignore_virtual or fieldname not in permitted_fields:
                         del d[fieldname]
                         continue
 
@@ -372,7 +378,7 @@ class BaseDocument:
             ):
                 d[fieldname] = str(d[fieldname])
 
-            if ignore_nulls and d[fieldname] is None:
+            if ignore_nulls and not is_virtual_field and d[fieldname] is None:
                 del d[fieldname]
 
         return d
@@ -548,7 +554,7 @@ class BaseDocument:
                 if not ignore_if_duplicate:
                     frappe.msgprint(
                         _("{0} {1} already exists").format(
-                            self.doctype, frappe.bold(self.name)
+                            _(self.doctype), frappe.bold(self.name)
                         ),
                         title=_("Duplicate Name"),
                         indicator="red",
@@ -713,7 +719,13 @@ class BaseDocument:
             value = cstr(self.get(df.fieldname))
             has_text_content = strip_html(value).strip()
             has_img_tag = "<img" in value
-            if df.fieldtype == "Text Editor" and (has_text_content or has_img_tag):
+            has_text_or_img_tag = has_text_content or has_img_tag
+
+            if df.fieldtype == "Text Editor" and has_text_or_img_tag:
+                return True
+            elif (
+                df.fieldtype == "Code" and df.options == "HTML" and has_text_or_img_tag
+            ):
                 return True
             else:
                 return has_text_content
@@ -796,11 +808,11 @@ class BaseDocument:
                             doctype, docname, values_to_fetch, as_dict=True
                         )
 
-                if frappe.get_meta(doctype).issingle:
+                if getattr(frappe.get_meta(doctype), "issingle", 0):
                     values.name = doctype
 
                 if frappe.get_meta(doctype).get("is_virtual"):
-                    values = frappe.get_doc(doctype, docname)
+                    values = frappe.get_doc(doctype, docname).as_dict()
 
                 if values:
                     setattr(self, df.fieldname, values.name)
@@ -966,7 +978,7 @@ class BaseDocument:
         if frappe.flags.in_install:
             return
 
-        if self.meta.issingle:
+        if getattr(self.meta, "issingle", 0):
             # single doctype value type is mediumtext
             return
 
@@ -1059,10 +1071,16 @@ class BaseDocument:
                     )
                 if self_value != db_value:
                     frappe.throw(
-                        _("Not allowed to change {0} after submission").format(
-                            df.label
+                        _(
+                            "{0} Not allowed to change {1} after submission from {2} to {3}"
+                        ).format(
+                            f"Row #{self.idx}:" if self.get("parent") else "",
+                            frappe.bold(_(df.label)),
+                            frappe.bold(db_value),
+                            frappe.bold(self_value),
                         ),
                         frappe.UpdateAfterSubmitError,
+                        title=_("Cannot Update After Submit"),
                     )
 
     def _sanitize_content(self):
@@ -1157,7 +1175,7 @@ class BaseDocument:
     def is_dummy_password(self, pwd):
         return "".join(set(pwd)) == "*"
 
-    def precision(self, fieldname, parentfield=None):
+    def precision(self, fieldname, parentfield=None) -> int | None:
         """Returns float precision for a particular field (or get global default).
 
         :param fieldname: Fieldname for which precision is required.
@@ -1212,7 +1230,8 @@ class BaseDocument:
             df = get_default_df(fieldname)
 
         if (
-            df.fieldtype == "Currency"
+            df
+            and df.fieldtype == "Currency"
             and not currency
             and (currency_field := df.get("options"))
             and (currency_value := self.get(currency_field))
@@ -1296,11 +1315,14 @@ class BaseDocument:
                 # get values from old doc
                 if self.get("parent_doc"):
                     parent_doc = self.parent_doc.get_latest()
-                    ref_doc = [
+                    child_docs = [
                         d
                         for d in parent_doc.get(self.parentfield)
                         if d.name == self.name
-                    ][0]
+                    ]
+                    if not child_docs:
+                        return
+                    ref_doc = child_docs[0]
                 else:
                     ref_doc = self.get_latest()
 

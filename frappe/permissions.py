@@ -94,6 +94,9 @@ def has_permission(
 	if user == "Administrator":
 		return True
 
+	if ptype == "share" and frappe.get_system_settings("disable_document_sharing"):
+		return False
+
 	if not doc and hasattr(doctype, "doctype"):
 		# first argument can be doc or doctype
 		doc = doctype
@@ -133,17 +136,24 @@ def has_permission(
 
 	def false_if_not_shared():
 		if ptype in ("read", "write", "share", "submit", "email", "print"):
-			shared = frappe.share.get_shared(
-				doctype, user, ["read" if ptype in ("email", "print") else ptype]
-			)
+
+			rights = ["read" if ptype in ("email", "print") else ptype]
 
 			if doc:
 				doc_name = get_doc_name(doc)
-				if doc_name in shared:
+				shared = frappe.share.get_shared(
+					doctype,
+					user,
+					rights=rights,
+					filters=[["share_name", "=", doc_name]],
+					limit=1,
+				)
+
+				if shared:
 					if ptype in ("read", "write", "share", "submit") or meta.permissions[0].get(ptype):
 						return True
 
-			elif shared:
+			elif frappe.share.get_shared(doctype, user, rights=rights, limit=1):
 				# if atleast one shared doc of that type, then return True
 				# this is used in db_query to check if permission on DocType
 				return True
@@ -220,7 +230,7 @@ def get_role_permissions(doctype_meta, user=None, is_owner=None):
 	if not user:
 		user = frappe.session.user
 
-	cache_key = (doctype_meta.name, user)
+	cache_key = (doctype_meta.name, user, bool(is_owner))
 
 	if user == "Administrator":
 		return allow_everything()
@@ -417,7 +427,7 @@ def get_roles(user=None, with_standard=True):
 	if not user:
 		user = frappe.session.user
 
-	if user == "Guest":
+	if user == "Guest" or not user:
 		return ["Guest"]
 
 	def get():
@@ -427,7 +437,9 @@ def get_roles(user=None, with_standard=True):
 			table = DocType("Has Role")
 			roles = (
 				frappe.qb.from_(table)
-				.where((table.parent == user) & (table.role.notin(["All", "Guest"])))
+				.where(
+					(table.parenttype == "User") & (table.parent == user) & (table.role.notin(["All", "Guest"]))
+				)
 				.select(table.role)
 				.run(pluck=True)
 			)
@@ -639,7 +651,7 @@ def get_linked_doctypes(dt: str) -> list:
 def get_doc_name(doc):
 	if not doc:
 		return None
-	return doc if isinstance(doc, str) else doc.name
+	return doc if isinstance(doc, str) else str(doc.name)
 
 
 def allow_everything():
@@ -705,8 +717,10 @@ def has_child_permission(
 
 	parent_meta = frappe.get_meta(parent_doctype)
 
-	if parent_meta.istable or all(
-		df.options != child_doctype for df in parent_meta.get_table_fields()
+	if parent_meta.istable or not (
+		valid_parentfields := [
+			df.fieldname for df in parent_meta.get_table_fields() if df.options == child_doctype
+		]
 	):
 		push_perm_check_log(
 			_("{0} is not a valid parent DocType for {1}").format(
@@ -715,15 +729,30 @@ def has_child_permission(
 		)
 		return False
 
-	if (
-		child_doc
-		and (permlevel := parent_meta.get_field(child_doc.parentfield).permlevel) > 0
-		and permlevel not in parent_meta.get_permlevel_access(ptype, user=user)
-	):
-		push_perm_check_log(
-			_("Insufficient Permission Level for {0}").format(frappe.bold(parent_doctype))
-		)
-		return False
+	if child_doc:
+		parentfield = child_doc.parentfield
+		if not parentfield:
+			push_perm_check_log(
+				_("Parentfield not specified in {0}: {1}").format(
+					frappe.bold(child_doctype), frappe.bold(child_doc.name)
+				)
+			)
+			return False
+
+		if parentfield not in valid_parentfields:
+			push_perm_check_log(
+				_("{0} is not a valid parentfield for {1}").format(
+					frappe.bold(parentfield), frappe.bold(child_doctype)
+				)
+			)
+			return False
+
+		permlevel = parent_meta.get_field(parentfield).permlevel
+		if permlevel > 0 and permlevel not in parent_meta.get_permlevel_access(ptype, user=user):
+			push_perm_check_log(
+				_("Insufficient Permission Level for {0}").format(frappe.bold(parent_doctype))
+			)
+			return False
 
 	return has_permission(
 		parent_doctype,

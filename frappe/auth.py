@@ -6,7 +6,7 @@ import frappe
 import frappe.database
 import frappe.utils
 import frappe.utils.user
-from frappe import _, conf
+from frappe import _
 from frappe.core.doctype.activity_log.activity_log import add_authentication_log
 from frappe.modules.patch_handler import check_session_stopped
 from frappe.sessions import Session, clear_sessions, delete_session
@@ -30,9 +30,6 @@ class HTTPRequest:
 		# load cookies
 		self.set_cookies()
 
-		# set frappe.local.db
-		self.connect()
-
 		# login and start/resume user session
 		self.set_session()
 
@@ -45,9 +42,6 @@ class HTTPRequest:
 		# write out latest cookies
 		frappe.local.cookie_manager.init_cookies()
 
-		# check session status
-		check_session_stopped()
-
 	@property
 	def domain(self):
 		if not getattr(self, "_domain", None):
@@ -59,7 +53,9 @@ class HTTPRequest:
 
 	def set_request_ip(self):
 		if frappe.get_request_header("X-Forwarded-For"):
-			frappe.local.request_ip = (frappe.get_request_header("X-Forwarded-For").split(",")[0]).strip()
+			frappe.local.request_ip = (
+				frappe.get_request_header("X-Forwarded-For").split(",", 1)[0]
+			).strip()
 
 		elif frappe.get_request_header("REMOTE_ADDR"):
 			frappe.local.request_ip = frappe.get_request_header("REMOTE_ADDR")
@@ -96,16 +92,6 @@ class HTTPRequest:
 
 	def set_lang(self):
 		frappe.local.lang = get_language()
-
-	def get_db_name(self):
-		"""get database name from conf"""
-		return conf.db_name
-
-	def connect(self):
-		"""connect to db, from ac_name or db_name"""
-		frappe.local.db = frappe.database.get_db(
-			user=self.get_db_name(), password=getattr(conf, "db_password", "")
-		)
 
 
 class LoginManager:
@@ -248,10 +234,11 @@ class LoginManager:
 		if not (user and pwd):
 			self.fail(_("Incomplete login details"), user=user)
 
+		_raw_user_name = user
 		user = User.find_by_credentials(user, pwd)
 
 		if not user:
-			self.fail("Invalid login credentials")
+			self.fail("Invalid login credentials", user=_raw_user_name)
 
 		# Current login flow uses cached credentials for authentication while checking OTP.
 		# Incase of OTP check, tracker for auth needs to be disabled(If not, it can remove tracker history as it is going to succeed anyway)
@@ -322,7 +309,7 @@ class LoginManager:
 
 		current_hour = int(now_datetime().strftime("%H"))
 
-		if login_before and current_hour > login_before:
+		if login_before and current_hour >= login_before:
 			frappe.throw(_("Login not allowed at this time"), frappe.AuthenticationError)
 
 		if login_after and current_hour < login_after:

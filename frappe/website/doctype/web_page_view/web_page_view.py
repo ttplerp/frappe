@@ -18,7 +18,7 @@ def make_view_log(path, referrer=None, browser=None, version=None, url=None, use
 	user_agent = request_dict.get("environ", {}).get("HTTP_USER_AGENT")
 
 	if referrer:
-		referrer = referrer.split("?")[0]
+		referrer = referrer.split("?", 1)[0]
 
 	is_unique = True
 	if referrer.startswith(url):
@@ -37,7 +37,10 @@ def make_view_log(path, referrer=None, browser=None, version=None, url=None, use
 	view.is_unique = is_unique
 
 	try:
-		view.insert(ignore_permissions=True)
+		if frappe.flags.read_only:
+			view.deferred_insert()
+		else:
+			view.insert(ignore_permissions=True)
 	except Exception:
 		if frappe.message_log:
 			frappe.message_log.pop()

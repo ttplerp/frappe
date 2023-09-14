@@ -70,6 +70,7 @@ class TestRecorder(FrappeTestCase):
 		frappe.db.sql("SELECT * FROM tabDocType")
 		frappe.db.sql("COMMIT")
 		frappe.recorder.dump()
+		frappe.recorder.post_process()
 
 		requests = frappe.recorder.get()
 		request = frappe.recorder.get(requests[0]["uuid"])
@@ -89,6 +90,7 @@ class TestRecorder(FrappeTestCase):
 			frappe.db.sql(query[sql_dialect])
 
 		frappe.recorder.dump()
+		frappe.recorder.post_process()
 
 		requests = frappe.recorder.get()
 		request = frappe.recorder.get(requests[0]["uuid"])
@@ -113,6 +115,7 @@ class TestRecorder(FrappeTestCase):
 			frappe.db.sql(query[0])
 
 		frappe.recorder.dump()
+		frappe.recorder.post_process()
 
 		requests = frappe.recorder.get()
 		request = frappe.recorder.get(requests[0]["uuid"])
@@ -123,3 +126,15 @@ class TestRecorder(FrappeTestCase):
 	def test_error_page_rendering(self):
 		content = get_response_content("error")
 		self.assertIn("Error", content)
+
+
+class TestRecorderDeco(FrappeTestCase):
+	def test_recorder_flag(self):
+		frappe.recorder.delete()
+
+		@frappe.recorder.record_queries
+		def test():
+			frappe.get_all("User")
+
+		test()
+		self.assertTrue(frappe.recorder.get())

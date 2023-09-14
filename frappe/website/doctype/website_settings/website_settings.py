@@ -1,10 +1,10 @@
 # Copyright (c) 2022, Frappe Technologies Pvt. Ltd. and Contributors
 # License: MIT. See LICENSE
+import re
 from urllib.parse import quote
 
 import frappe
 from frappe import _
-from frappe.integrations.google_oauth import GoogleOAuth
 from frappe.model.document import Document
 from frappe.utils import encode, get_request_site_address
 from frappe.website.utils import get_boot_data
@@ -16,6 +16,7 @@ class WebsiteSettings(Document):
 		self.validate_footer_items()
 		self.validate_home_page()
 		self.validate_google_settings()
+		self.validate_redirects()
 
 	def validate_home_page(self):
 		if frappe.flags.in_install:
@@ -72,6 +73,16 @@ class WebsiteSettings(Document):
 		if self.enable_google_indexing and not frappe.db.get_single_value("Google Settings", "enable"):
 			frappe.throw(_("Enable Google API in Google Settings."))
 
+	def validate_redirects(self):
+		for idx, row in enumerate(self.route_redirects):
+			try:
+				source = row.source.strip("/ ") + "$"
+				re.compile(source)
+				re.sub(source, row.target, "")
+			except Exception as e:
+				if not frappe.flags.in_migrate:
+					frappe.throw(_("Invalid redirect regex in row #{}: {}").format(idx, str(e)))
+
 	def on_update(self):
 		self.clear_cache()
 
@@ -88,6 +99,8 @@ class WebsiteSettings(Document):
 		frappe.clear_cache()
 
 	def get_access_token(self):
+		from frappe.integrations.google_oauth import GoogleOAuth
+
 		if not self.indexing_refresh_token:
 			button_label = frappe.bold(_("Allow API Indexing Access"))
 			raise frappe.ValidationError(_("Click on {0} to generate Refresh Token.").format(button_label))
@@ -191,6 +204,7 @@ def get_website_settings(context=None):
 	if settings.splash_image:
 		context["splash_image"] = settings.splash_image
 
+	context.read_only_mode = frappe.flags.read_only
 	context.boot = get_boot_data()
 
 	return context

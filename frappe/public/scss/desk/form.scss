@@ -319,8 +319,13 @@
 }
 
 .form-tabs-list {
+	position: sticky;
+	background-color: var(--card-bg);
+	z-index: 5;
+	transition: 0.5s top;
 	padding-left: var(--padding-xs);
-	border-bottom: 1px solid var(--border-color);
+	border-bottom: 2px solid var(--border-color);
+	border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
 
 	.form-tabs {
 		.nav-item {
@@ -338,6 +343,15 @@
 		}
 	}
 }
+.form-tab-content {
+	scroll-margin-top: calc(var(--navbar-height) + 52px);
+}
+.form-tabs-sticky-up {
+	top: calc(var(--navbar-height) - 1px);
+}
+.form-tabs-sticky-down {
+	top: calc(var(--navbar-height) + var(--page-head-height) - 1px);
+}
 
 .progress-area {
 	padding-top: var(--padding-md);
@@ -354,6 +368,21 @@
 	.progress-message {
 		font-feature-settings: "tnum" 1;
 		margin-top: 0px;
+	}
+}
+
+// handle 5 columns in form
+.form-column.col-sm-20 {
+	position: relative;
+	width: 100%;
+	padding-right: 15px;
+	padding-left: 15px;
+}
+
+@media (min-width: map-get($grid-breakpoints, "sm")) {
+	.form-column.col-sm-20 {
+		flex: 0 0 20%;
+		max-width: 20%;
 	}
 }
 

@@ -72,6 +72,7 @@ frappe.ui.form.on("Customize Form", {
 						} else {
 							frm.refresh();
 							frm.trigger("setup_sortable");
+							frm.trigger("setup_default_views");
 						}
 					}
 					localStorage["customize_doctype"] = frm.doc.doc_type;
@@ -82,8 +83,12 @@ frappe.ui.form.on("Customize Form", {
 		}
 	},
 
+	is_calendar_and_gantt: function (frm) {
+		frm.trigger("setup_default_views");
+	},
+
 	setup_sortable: function (frm) {
-		frm.doc.fields.forEach(function (f, i) {
+		frm.doc.fields.forEach(function (f) {
 			if (!f.is_custom_field) {
 				f._sortable = false;
 			}
@@ -178,6 +183,7 @@ frappe.ui.form.on("Customize Form", {
 								fieldname: "module",
 								options: "Module Def",
 								label: __("Module to Export"),
+								reqd: 1,
 							},
 							{
 								fieldtype: "Check",
@@ -221,6 +227,10 @@ frappe.ui.form.on("Customize Form", {
 			frm.set_df_property("sort_field", "options", fields);
 		}
 	},
+
+	setup_default_views(frm) {
+		frappe.model.set_default_views_for_doctype(frm.doc.doc_type, frm);
+	},
 });
 
 // can't delete standard fields
@@ -236,6 +246,7 @@ frappe.ui.form.on("Customize Form Field", {
 		var f = frappe.model.get_doc(cdt, cdn);
 		f.is_system_generated = false;
 		f.is_custom_field = true;
+		frm.trigger("setup_default_views");
 	},
 });
 
@@ -284,22 +295,59 @@ frappe.ui.form.on("DocType State", {
 	},
 });
 
-frappe.customize_form.set_primary_action = function (frm) {
-	frm.page.set_primary_action(__("Update"), function () {
-		if (frm.doc.doc_type) {
-			return frm.call({
-				doc: frm.doc,
-				freeze: true,
-				btn: frm.page.btn_primary,
-				method: "save_customization",
-				callback: function (r) {
-					if (!r.exc) {
-						frappe.customize_form.clear_locals_and_refresh(frm);
-						frm.script_manager.trigger("doc_type");
-					}
-				},
-			});
+frappe.customize_form.validate_fieldnames = async function (frm) {
+	for (let i = 0; i < frm.doc.fields.length; i++) {
+		let field = frm.doc.fields[i];
+
+		let fieldname = field.label && frappe.model.scrub(field.label).toLowerCase();
+		if (
+			field.label &&
+			!field.fieldname &&
+			in_list(frappe.model.restricted_fields, fieldname)
+		) {
+			let message = __(
+				"For field <b>{0}</b> in row <b>{1}</b>, fieldname <b>{2}</b> is restricted it will be renamed as <b>{2}1</b>. Do you want to continue?",
+				[field.label, field.idx, fieldname]
+			);
+			await pause_to_confirm(message);
 		}
+	}
+
+	function pause_to_confirm(message) {
+		return new Promise((resolve) => {
+			frappe.confirm(
+				message,
+				() => resolve(),
+				() => {
+					frm.page.btn_primary.prop("disabled", false);
+				}
+			);
+		});
+	}
+};
+
+frappe.customize_form.save_customization = function (frm) {
+	if (frm.doc.doc_type) {
+		return frm.call({
+			doc: frm.doc,
+			freeze: true,
+			freeze_message: __("Saving Customization..."),
+			btn: frm.page.btn_primary,
+			method: "save_customization",
+			callback: function (r) {
+				if (!r.exc) {
+					frappe.customize_form.clear_locals_and_refresh(frm);
+					frm.script_manager.trigger("doc_type");
+				}
+			},
+		});
+	}
+};
+
+frappe.customize_form.set_primary_action = function (frm) {
+	frm.page.set_primary_action(__("Update"), async () => {
+		await this.validate_fieldnames(frm);
+		this.save_customization(frm);
 	});
 };
 

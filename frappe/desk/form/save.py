@@ -5,25 +5,33 @@ import json
 
 import frappe
 from frappe.desk.form.load import run_onload
+from frappe.model.docstatus import DocStatus
+from frappe.monitor import add_data_to_monitor
+from frappe.utils.telemetry import capture_doc
 
 
 @frappe.whitelist()
 def savedocs(doc, action):
 	"""save / submit / update doclist"""
 	doc = frappe.get_doc(json.loads(doc))
+	capture_doc(doc, action)
 	set_local_name(doc)
 
 	# action
-	doc.docstatus = {"Save": 0, "Submit": 1, "Update": 1, "Cancel": 2}[action]
+	doc.docstatus = {
+		"Save": DocStatus.draft(),
+		"Submit": DocStatus.submitted(),
+		"Update": DocStatus.submitted(),
+		"Cancel": DocStatus.cancelled(),
+	}[action]
 
-	if doc.docstatus == 1:
-		doc.submit()
-	else:
-		doc.save()
+	doc.save()
 
 	# update recent documents
 	run_onload(doc)
 	send_updated_docs(doc)
+
+	add_data_to_monitor(doctype=doc.doctype, action=action)
 
 	frappe.msgprint(frappe._("Saved"), indicator="green", alert=True)
 
@@ -32,6 +40,8 @@ def savedocs(doc, action):
 def cancel(doctype=None, name=None, workflow_state_fieldname=None, workflow_state=None):
 	"""cancel a doclist"""
 	doc = frappe.get_doc(doctype, name)
+	capture_doc(doc, "Cancel")
+
 	if workflow_state_fieldname and workflow_state:
 		doc.set(workflow_state_fieldname, workflow_state)
 	doc.cancel()

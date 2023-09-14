@@ -9,7 +9,7 @@ from frappe.model import core_doctypes_list
 from frappe.model.docfield import supports_translation
 from frappe.model.document import Document
 from frappe.query_builder.functions import IfNull
-from frappe.utils import cstr
+from frappe.utils import cstr, random_string
 
 
 class CustomField(Document):
@@ -18,11 +18,23 @@ class CustomField(Document):
 		self.name = self.dt + "-" + self.fieldname
 
 	def set_fieldname(self):
+		restricted = (
+			"name",
+			"parent",
+			"creation",
+			"modified",
+			"modified_by",
+			"parentfield",
+			"parenttype",
+			"file_list",
+			"flags",
+			"docstatus",
+		)
 		if not self.fieldname:
 			label = self.label
 			if not label:
 				if self.fieldtype in ["Section Break", "Column Break", "Tab Break"]:
-					label = self.fieldtype + "_" + str(self.idx)
+					label = self.fieldtype + "_" + str(random_string(5))
 				else:
 					frappe.throw(_("Label is mandatory"))
 
@@ -33,6 +45,9 @@ class CustomField(Document):
 
 		# fieldnames should be lowercase
 		self.fieldname = self.fieldname.lower()
+
+		if self.fieldname in restricted:
+			self.fieldname = self.fieldname + "1"
 
 	def before_insert(self):
 		self.set_fieldname()
@@ -102,6 +117,20 @@ class CustomField(Document):
 
 		# delete property setter entries
 		frappe.db.delete("Property Setter", {"doc_type": self.dt, "field_name": self.fieldname})
+
+		# update doctype layouts
+		doctype_layouts = frappe.get_all(
+			"DocType Layout", filters={"document_type": self.dt}, pluck="name"
+		)
+
+		for layout in doctype_layouts:
+			layout_doc = frappe.get_doc("DocType Layout", layout)
+			for field in layout_doc.fields:
+				if field.fieldname == self.fieldname:
+					layout_doc.remove(field)
+					layout_doc.save()
+					break
+
 		frappe.clear_cache(doctype=self.dt)
 
 	def validate_insert_after(self, meta):

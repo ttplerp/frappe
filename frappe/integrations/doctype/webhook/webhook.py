@@ -26,6 +26,7 @@ class Webhook(Document):
 		self.validate_request_url()
 		self.validate_request_body()
 		self.validate_repeating_fields()
+		self.validate_secret()
 		self.preview_document = None
 
 	def on_update(self):
@@ -74,6 +75,13 @@ class Webhook(Document):
 		if len(webhook_data) != len(set(webhook_data)):
 			frappe.throw(_("Same Field is entered more than once"))
 
+	def validate_secret(self):
+		if self.enable_security:
+			try:
+				self.get_password("webhook_secret", False).encode("utf8")
+			except Exception:
+				frappe.throw(_("Invalid Webhook Secret"))
+
 	@frappe.whitelist()
 	def generate_preview(self):
 		# This function doesn't need to do anything specific as virtual fields
@@ -112,9 +120,14 @@ def get_context(doc):
 
 
 def enqueue_webhook(doc, webhook) -> None:
-	webhook: Webhook = frappe.get_doc("Webhook", webhook.get("name"))
-	headers = get_webhook_headers(doc, webhook)
-	data = get_webhook_data(doc, webhook)
+	try:
+		webhook: Webhook = frappe.get_doc("Webhook", webhook.get("name"))
+		headers = get_webhook_headers(doc, webhook)
+		data = get_webhook_data(doc, webhook)
+	except Exception as e:
+		frappe.logger().debug({"enqueue_webhook_error": e})
+		log_request(webhook.name, doc.name, webhook.request_url, headers, data)
+		return
 
 	for i in range(3):
 		try:
@@ -127,32 +140,40 @@ def enqueue_webhook(doc, webhook) -> None:
 			)
 			r.raise_for_status()
 			frappe.logger().debug({"webhook_success": r.text})
-			log_request(webhook.request_url, headers, data, r)
+			log_request(webhook.name, doc.name, webhook.request_url, headers, data, r)
 			break
 
 		except requests.exceptions.ReadTimeout as e:
 			frappe.logger().debug({"webhook_error": e, "try": i + 1})
-			log_request(webhook.request_url, headers, data)
+			log_request(webhook.name, doc.name, webhook.request_url, headers, data)
 
 		except Exception as e:
 			frappe.logger().debug({"webhook_error": e, "try": i + 1})
-			log_request(webhook.request_url, headers, data, r)
+			log_request(webhook.name, doc.name, webhook.request_url, headers, data, r)
 			sleep(3 * i + 1)
 			if i != 2:
 				continue
-			else:
-				webhook.log_error("Webhook failed")
 
 
-def log_request(url: str, headers: dict, data: dict, res: requests.Response | None = None):
+def log_request(
+	webhook: str,
+	docname: str,
+	url: str,
+	headers: dict,
+	data: dict,
+	res: requests.Response | None = None,
+):
 	request_log = frappe.get_doc(
 		{
 			"doctype": "Webhook Request Log",
+			"webhook": webhook,
+			"reference_document": docname,
 			"user": frappe.session.user if frappe.session.user else None,
 			"url": url,
 			"headers": frappe.as_json(headers) if headers else None,
 			"data": frappe.as_json(data) if data else None,
-			"response": frappe.as_json(res.json()) if res else None,
+			"response": res and res.text,
+			"error": frappe.get_traceback(),
 		}
 	)
 
