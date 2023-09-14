@@ -125,7 +125,7 @@ frappe.request.call = function (opts) {
 
 	var statusCode = {
 		200: function (data, xhr) {
-			opts.success_callback && opts.success_callback(data, this.responseText);
+			opts.success_callback && opts.success_callback(data, xhr.responseText);
 		},
 		401: function (xhr) {
 			if (frappe.app.session_expired_dialog && frappe.app.session_expired_dialog.display) {
@@ -193,9 +193,9 @@ frappe.request.call = function (opts) {
 			var r = xhr.responseJSON;
 			if (!r) {
 				try {
-					r = JSON.parse(this.responseText);
+					r = JSON.parse(xhr.responseText);
 				} catch (e) {
-					r = this.responseText;
+					r = xhr.responseText;
 				}
 			}
 
@@ -203,7 +203,7 @@ frappe.request.call = function (opts) {
 		},
 		501: function (data, xhr) {
 			if (typeof data === "string") data = JSON.parse(data);
-			opts.error_callback && opts.error_callback(data, this.responseText);
+			opts.error_callback && opts.error_callback(data, xhr.responseText);
 		},
 		500: function (xhr) {
 			frappe.utils.play_sound("error");
@@ -320,14 +320,14 @@ frappe.request.call = function (opts) {
 			try {
 				if (
 					xhr.getResponseHeader("content-type") == "application/json" &&
-					this.responseText
+					xhr.responseText
 				) {
 					var data;
 					try {
-						data = JSON.parse(this.responseText);
+						data = JSON.parse(xhr.responseText);
 					} catch (e) {
 						console.log("Unable to parse reponse text");
-						console.log(this.responseText);
+						console.log(xhr.responseText);
 						console.log(e);
 					}
 					if (data && data.exception) {
@@ -509,7 +509,7 @@ frappe.after_ajax = function (fn) {
 };
 
 frappe.request.report_error = function (xhr, request_opts) {
-	var data = JSON.parse(this.responseText);
+	var data = JSON.parse(xhr.responseText);
 	var exc;
 	if (data.exc) {
 		try {
