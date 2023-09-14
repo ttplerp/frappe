@@ -13,7 +13,6 @@ import calendar
 
 @frappe.whitelist()
 def get_employee_info(user=None, checkin_type=None, half_day=None):
-    #change
     if not user:
         user = frappe.session.user
     FMT = "%H:%M:%S"
