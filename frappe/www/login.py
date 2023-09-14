@@ -18,14 +18,14 @@ no_cache = True
 
 
 def get_context(context):
-	redirect_to = frappe.local.request.args.get("redirect-to")
-
-	if frappe.session.user != "Guest":
-		if not redirect_to:
-			if frappe.session.data.user_type == "Website User":
-				redirect_to = get_home_page()
-			else:
-				redirect_to = "/app"
+    redirect_to = frappe.local.request.args.get("redirect-to")
+    # changes
+    if frappe.session.user != "Guest":
+        if not redirect_to:
+            if frappe.session.data.user_type == "Website User":
+                redirect_to = get_home_page()
+            else:
+                redirect_to = "/app/employee-desk"
 
 		if redirect_to != "login":
 			frappe.local.flags.redirect_location = redirect_to
