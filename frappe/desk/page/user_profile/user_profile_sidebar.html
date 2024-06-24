@@ -2,14 +2,23 @@
 	<div class="user-image-container hidden-xs hidden-sm">
 		<div class="sidebar-image-wrapper">
 			{% if user_image %}
-			<img class="sidebar-image" src="{{ user_image }}" />
+			<img class="sidebar-image" src="{{user_image}}"/>
 			{% else %}
 			<div class="sidebar-standard-image hide">
 				<div class="standard-image"></div>
 			</div>
 			{% endif %}
 		</div>
+		<!-- <h3>Employee Attandance Section</h3> -->
 	</div>
+	<div class = "office-in-button">
+        <p><button class="office-in btn-ed btn-user-profile btn-user-profile-block"><b>{%=__("Office IN") %}</b></button></p>
+    </div>
+    <div class = "office-out-button">
+        <p><button class="office-out btn-ed btn-user-profile btn-user-profile-block"><b>{%=__("Office OUT") %}</b></button></p>
+    </div> 
+    <div class="display-time"></div>
+    <div class="checkin_details"></div>
 	<div class="profile-details">
 		{% if user_bio %}
 		<div class="detail-item">
