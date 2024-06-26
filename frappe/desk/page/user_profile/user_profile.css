@@ -16,7 +16,9 @@
 	margin-left: calc(var(--timeline-left-padding) + var(--timeline-item-left-margin));
 	max-width: var(--timeline-content-max-width);
 }
-
+.office-in{
+	color: #0ca302;
+}
 .recent-activity .show-more-activity-btn {
 	display: block;
 	margin: auto;
@@ -203,8 +205,9 @@
 
 .btn-user-profile {
 	color: #fff;
-	background-color: #01a4dc;
-	border-color: #000000;
+	background-color: #002e6e;
+	transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, transform 0.4s ease-in-out;
+	/* border-color: #000000; */
   }
   .btn-user-profile:hover,
   .btn-user-profile:focus,
@@ -212,14 +215,20 @@
   .btn-user-profile:active,
   .btn-user-profile.active,
   .open > .dropdown-toggle.btn-user-profile {
-	color: black;
-	background-color: #25faa1;
-	border-color: #0711ff;
+	color: #ffffff;
+	background-color: #16478d;
+	/* border-color: #0711ff; */
+	transform: scale(1.1);
+	
   }
 
-.btn-user-profile-block {
+.btn-user-profile-block {	
   display: block;
-  width: 100%;
+  border-radius: 15px;
+  width: 70%;
+  margin-bottom: 30px;
+  font-size: 15px;
+  letter-spacing: 0.5px;
 }
 .btn-user-profile-block + .btn-user-profile-block {
   margin-top: 5px;

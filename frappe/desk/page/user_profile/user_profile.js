@@ -456,8 +456,8 @@ class UserProfile {
 
 		this.get_checkin_info().then(() => {
 				let html = $(__(`<p style="color:#1f1e1e; font-size:16px; "><b>${__('Date: ')}</b><span class="rank"><b>${this.date}</b></span></p>
-					<p style="color:#15F906; font-size:14px;"><b>${__('Office In: ')}</b><span class="rank"><b>${this.office_in}</b></span></p>
-					<p style="color:#f44336; font-size:14px;"><b>${__('Office Out: ')}</b><span class="rank"><b>${this.office_out}</b></span></p>
+					<p style="color:#0a9d01; font-size:14px;"><b>${__('Office In: ')}</b><span class="rank"><b>${this.office_in}</b></span></p>
+					<p style="color:#fd8300; font-size:14px;"><b>${__('Office Out: ')}</b><span class="rank"><b>${this.office_out}</b></span></p>
 				`, [this.date, this.office_in,this.office_out]));
 
 				$checkin_details.append(html);
