@@ -365,7 +365,10 @@ class UserProfile {
 	go_to_desk() {
 		// frappe.set_route('Form', 'User', this.user_id);
 		frappe.set_route('');
-	}
+	}	
+	
+
+	
 
 	// Enabling and disabling employee checkin button
 	setup_punching_button(){
@@ -388,7 +391,7 @@ class UserProfile {
 			this.wrapper.find('.office-in-button').hide();
 			this.wrapper.find('.office-out-button').hide();
 		}
-		else if(checkin_type == "Office IN" && half_day == 0 && holiday == 0 && half_day_leave == 0){
+		else if(checkin_type == "Office IN" && half_day == 0 && holiday == 1 && half_day_leave == 0){
 			this.wrapper.find('.office-in-button').hide();
 			this.wrapper.find('.office-out').on('click', () => {
 				this.make_employee_checkin(checkin_type, half_day, half_day_leave);
@@ -410,10 +413,10 @@ class UserProfile {
 				this.make_employee_checkin(checkin_type, half_day, half_day_leave);
 			});
 		}
-		else if(holiday == 1){
-			this.wrapper.find('.office-in-button').hide();
-			this.wrapper.find('.office-out-button').hide();
-		}
+		// else if(holiday == 1){
+		// 	this.wrapper.find('.office-in-button').hide();
+		// 	this.wrapper.find('.office-out-button').hide();
+		// }
 		else{
 			this.wrapper.find('.office-out-button').hide();
 			this.wrapper.find('.office-in').on('click', () => {
