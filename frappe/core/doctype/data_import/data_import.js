@@ -58,6 +58,14 @@ frappe.ui.form.on("Data Import", {
 				},
 			};
 		});
+		frm.set_query("child_doctype", () => {
+			return {
+				query: "erpnext.custom_utils.filter_child_doctypes",
+				filters: {
+					parent: [frm.doc.reference_doctype],
+				},
+			};
+		});
 
 		frm.get_field("import_file").df.options = {
 			restrictions: {

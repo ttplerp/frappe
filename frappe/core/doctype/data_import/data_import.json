@@ -9,6 +9,7 @@
  "field_order": [
   "reference_doctype",
   "import_type",
+  "child_doctype",
   "download_template",
   "import_file",
   "payload_count",
@@ -44,7 +45,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Import Type",
-   "options": "\nInsert New Records\nUpdate Existing Records",
+   "options": "\nInsert New Records\nUpdate Existing Records\nInsert Child Records",
    "reqd": 1,
    "set_only_once": 1
   },
@@ -123,7 +124,7 @@
    "label": "Import Warnings"
   },
   {
-   "depends_on": "eval:!doc.__islocal",
+   "depends_on": "reference_doctype",
    "fieldname": "download_template",
    "fieldtype": "Button",
    "label": "Download Template"
@@ -167,11 +168,18 @@
    "hidden": 1,
    "label": "Payload Count",
    "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.import_type == \"Insert Child Records\"",
+   "fieldname": "child_doctype",
+   "fieldtype": "Link",
+   "label": "Child Doctype",
+   "options": "DocType"
   }
  ],
  "hide_toolbar": 1,
  "links": [],
- "modified": "2024-01-30 17:08:05.566686",
+ "modified": "2024-08-30 11:41:41.518936",
  "modified_by": "Administrator",
  "module": "Core",
  "name": "Data Import",

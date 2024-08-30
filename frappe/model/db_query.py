@@ -1180,7 +1180,7 @@ def check_parent_permission(parent, child_doctype):
 			return
 
 	# Either parent not passed or the user doesn't have permission on parent doctype of child table!
-	raise frappe.PermissionError
+	# raise frappe.PermissionError
 
 
 def get_order_by(doctype, meta):

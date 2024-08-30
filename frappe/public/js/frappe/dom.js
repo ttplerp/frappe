@@ -414,6 +414,7 @@ $(window).on("online", function () {
 
 $(window).on("offline", function () {
 	if (document.hidden) return;
+	frappe.throw("Connection lost. Some features might not work.")
 	frappe.show_alert({
 		indicator: "orange",
 		message: __("Connection lost. Some features might not work."),

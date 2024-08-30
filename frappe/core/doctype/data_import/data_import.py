@@ -223,8 +223,7 @@ def import_file(doctype, file_path, import_type, submit_after_import=False, cons
 	data_import.import_type = (
 		"Insert New Records" if import_type.lower() == "insert" else "Update Existing Records"
 	)
-
-	i = Importer(doctype=doctype, file_path=file_path, data_import=data_import, console=console)
+	i = Importer(doctype=doctype, file_path=file_path, data_import=data_import, console=console, )
 	i.import_data()
 
 
