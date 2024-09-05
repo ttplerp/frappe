@@ -188,14 +188,18 @@ class UserProfile {
 	//---------------------Inserting Employee Checkin----------------------------
 	make_employee_checkin(checkin_type, half_day, half_day_leave){
 		var ct = ""
+		var checkInOut = ""
 		if(checkin_type == "Office IN" && half_day == 0 && half_day_leave == 0){
 			ct = "Office OUT"
+			checkInOut = "Check OUT"
 		}
 		else if((half_day == 1 || half_day_leave == 1) &&  checkin_type == "Office IN"){
 			ct = "Office OUT"
+			checkInOut = "Check OUT"
 		}
 		else{
 			ct = "Office IN"
+			checkInOut = "Check In"
 		}
 		frappe.call({
 			method:"frappe.desk.page.user_profile.user_profile.get_employee_info",
@@ -245,7 +249,7 @@ class UserProfile {
 					}
 					else{
 						frappe.confirm(
-							__('Are you sure?'),
+							__('Are you sure to '+ checkInOut + '?'),
 							function(){
 								frappe.call({
 									method: "frappe.desk.page.user_profile.user_profile.make_employee_checkin",
