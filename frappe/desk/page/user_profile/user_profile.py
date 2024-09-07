@@ -77,8 +77,15 @@ def get_employee_info(user=None, checkin_type=None, half_day=None):
 			emp[0].shift_type="General Shift"
 		actual_start_time = datetime.strptime(str(frappe.db.get_value("Shift Type", emp[0].shift_type, "start_time")),FMT)
 		actual_start_time = actual_start_time.time()
-		actual_end_time = datetime.strptime(str(frappe.db.get_value("Shift Type", emp[0].shift_type, "end_time")),FMT)
-		actual_end_time = actual_end_time.time()
+
+		#Added by Thukten to address Satruday Half Day
+		saturday_half_day = frappe.db.get_value("Holiday List", frappe.db.get_value("Employee", emp[0].employee, "holiday_list"), "saturday_half")
+		if saturday_half_day and date.weekday() == 5:
+			actual_end_time = datetime.strptime(str(frappe.db.get_value("Shift Type", emp[0].shift_type, "half_day_end_time")),FMT)
+			actual_end_time = actual_end_time.time()
+		else:
+			actual_end_time = datetime.strptime(str(frappe.db.get_value("Shift Type", emp[0].shift_type, "end_time")),FMT)
+			actual_end_time = actual_end_time.time()
 
 	ct = checkin_type.split(" ")
 
