@@ -127,6 +127,9 @@ def get_leave_details(user):
 	emp = frappe.db.sql("""
                           select name from `tabEmployee` where user_id = '{}'
                           """.format(user), as_dict = True)
+	if not emp:
+        frappe.throw("Your User ID {} is not mapped with Employee . Please contact HR".format(user))
+		
 	employee = emp[0].name
 	cur_date = datetime.strptime(str(nowdate()), "%Y-%m-%d")
 	allocation_records = get_leave_allocation_records(employee, cur_date)
