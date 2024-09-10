@@ -6,6 +6,7 @@ from frappe.query_builder.functions import Date, Sum, UnixTimestamp
 from frappe.utils import getdate, nowdate, cint, flt,nowtime
 import calendar
 from erpnext.setup.doctype.employee.employee import get_holiday_list_for_employee
+from hrms.hr.doctype.leave_application.leave_application import get_number_of_leave_days
 
 @frappe.whitelist()
 def get_employee_info(user=None, checkin_type=None, half_day=None):
