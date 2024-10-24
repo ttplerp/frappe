@@ -16,7 +16,9 @@
   "smallest_currency_fraction_value",
   "symbol",
   "symbol_on_right",
-  "number_format"
+  "number_format",
+  "column_break_wbqbz",
+  "account"
  ],
  "fields": [
   {
@@ -76,13 +78,23 @@
    "fieldname": "symbol_on_right",
    "fieldtype": "Check",
    "label": "Show Currency Symbol on Right Side"
+  },
+  {
+   "fieldname": "column_break_wbqbz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Account",
+   "options": "Account"
   }
  ],
  "icon": "fa fa-bitcoin",
  "idx": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2022-07-04 09:42:52.425440",
+ "modified": "2024-08-10 18:01:23.683950",
  "modified_by": "Administrator",
  "module": "Geo",
  "name": "Currency",
