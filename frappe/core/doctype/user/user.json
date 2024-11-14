@@ -16,6 +16,7 @@
   "column_break0",
   "full_name",
   "username",
+  "signature",
   "column_break_11",
   "language",
   "time_zone",
@@ -652,12 +653,12 @@
    "label": "Auto follow documents that you Like"
   },
   {
-    "default": "0",
-    "depends_on": "eval:(doc.document_follow_notify== 1)",
-    "fieldname": "follow_shared_documents",
-    "fieldtype": "Check",
-    "label": "Auto follow documents that are shared with you"
-   },
+   "default": "0",
+   "depends_on": "eval:(doc.document_follow_notify== 1)",
+   "fieldname": "follow_shared_documents",
+   "fieldtype": "Check",
+   "label": "Auto follow documents that are shared with you"
+  },
   {
    "default": "0",
    "depends_on": "eval:(doc.document_follow_notify== 1)",
@@ -671,6 +672,13 @@
    "fieldtype": "Small Text",
    "hidden": 1,
    "label": "Onboarding Status"
+  },
+  {
+   "description": "Recommended signature size: [ Width 400 px & Height 190 px] ",
+   "fieldname": "signature",
+   "fieldtype": "Attach Image",
+   "label": "Signature",
+   "no_copy": 1
   }
  ],
  "icon": "fa fa-user",
@@ -733,7 +741,7 @@
    "link_fieldname": "user"
   }
  ],
- "modified": "2024-02-11 13:16:29.574666",
+ "modified": "2024-11-10 10:13:46.463006",
  "modified_by": "Administrator",
  "module": "Core",
  "name": "User",
