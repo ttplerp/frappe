@@ -46,6 +46,7 @@ class UserProfile {
 		this.setup_transaction_link();
 		this.main_section.empty().append(frappe.render_template('user_profile'));
 		this.render_user_details();
+		this.make_activty_dashboard();
 		if(this.user_id != "Administrator"){
 			this.employee_leave_dashboard();
 			this.create_attendance_dashboard_filters();
@@ -60,6 +61,59 @@ class UserProfile {
 		this.$user_search_button = this.page.set_secondary_action('<b>Home Page</b>', () => {
 			frappe.set_route('')
 		});
+	}
+
+	make_activty_dashboard() {
+		let $activity_dashboard = this.wrapper.find('.activty-dashboard');
+		if (this.user_id) {
+			frappe.call({
+				method: "frappe.desk.page.user_profile.user_profile.notification_action",
+				async: false,
+				args: {
+					user_id: this.user_id,
+				},
+				callback: function(r) {
+					console.log(r.message);
+					let html = $(__(`
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/enote" class="link-content">
+								eNotes
+								<span class="badge">${r.message['enote_count']}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/expense-claim" class="link-content">
+								Expense Claim
+								<span class="badge">${r.message.expense_count}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/leave-application" class="link-content">
+								Leave Application
+								<span class="badge">${r.message.leave_count}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-authorization" class="link-content">
+								Travel Authorization
+								<span class="badge">${r.message.ta_count}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim" class="link-content">
+								Travel Claim
+								<span class="badge">${r.message.tc_count}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/leave-encashment" class="link-content">
+								Leave Encashment
+								<span class="badge">${r.message.leave_encash_count}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim" class="link-content">
+								Employee Benefit Claim
+								<span class="badge">${r.message.benefit_count}</span>
+							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim" class="link-content">
+								Employee Advance
+								<span class="badge">${r.message.emp_advance_count}</span>
+							</a></div>
+					`));
+					$activity_dashboard.append(html);
+				}
+				
+			});
+			
+		}
 	}
 	employee_leave_dashboard() {
 		let $leave_dashboard = this.wrapper.find('.leave-dashboard');

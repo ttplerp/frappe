@@ -607,3 +607,83 @@ def get_energy_points_list(start, limit, user):
 		limit=limit,
 		order_by="creation desc",
 	)
+
+@frappe.whitelist()
+def notification_action(user_id='tsheringom@bdb.bt'):
+	notification = {}
+	enote_count = frappe.db.sql("""
+						select count(distinct(e.name)) enote_count from `tabeNote` e
+						inner join `tabeNote Reviewer` r on e.name = r.parent
+						where e.docstatus=0 
+						and (
+								(e.forward_to="{user}" and e.workflow_state = "Pending")
+									or
+								(r.user_id="{user}" and e.workflow_state = "Waiting For Reviewer" and r.reviewed=0)
+							)						
+					""".format(user=user_id), as_dict=True)[0]
+	notification.update(enote_count)
+	
+	ta_count = frappe.db.sql("""
+						select count(*) ta_count from `tabTravel Authorization`
+						where docstatus=0
+						and supervisor = "{user}" 
+						and workflow_state not in ("Draft","Rejected")	
+					""".format(user=user_id), as_dict=True)[0]
+	notification.update(ta_count)
+	
+	tc_count = frappe.db.sql("""
+						select count(*) tc_count from `tabTravel Claim`
+						where docstatus=0
+						and supervisor = "{user}" 
+						and workflow_state not in ("Draft","Rejected","Approved")		
+					""".format(user=user_id), as_dict=True)[0]
+	notification.update(tc_count)
+	
+	expense_count = frappe.db.sql("""
+						select count(*) expense_count from `tabExpense Claim`
+						where docstatus=0
+						and expense_approver = "{user}"
+						and workflow_state not in ("Draft","Rejected","Approved")	
+						""".format(user=user_id), as_dict=True)[0]
+	notification.update(expense_count)
+	
+	benefit_count = frappe.db.sql("""
+						select count(*) benefit_count from `tabEmployee Benefits`
+						where docstatus=0
+						and benefit_approver = "{user}" 
+						and workflow_state not in ("Draft","Rejected","Approved")	
+						""".format(user=user_id), as_dict=True)[0]
+	notification.update(benefit_count)
+	
+	leave_application_count =  frappe.db.sql("""
+						select count(*) leave_count from `tabLeave Application`
+						where docstatus=0
+						and leave_approver = "{user}" 
+						and workflow_state not in ("Draft","Rejected")	
+						""".format(user=user_id), as_dict=True)[0]
+	notification.update(leave_application_count)
+
+	leave_encash_count =  frappe.db.sql("""
+						select count(*) leave_encash_count from `tabLeave Encashment`
+						where docstatus=0
+						and approver = "{user}" 
+						and workflow_state not in ("Draft","Rejected")	
+						""".format(user=user_id), as_dict=True)[0]
+	notification.update(leave_encash_count)
+
+	emp_advance_count = frappe.db.sql("""
+						select count(*) emp_advance_count from `tabEmployee Advance`
+						where docstatus=0
+						and advance_approver = "{user}"
+						and workflow_state not in ("Draft","Rejected")	
+						""".format(user=user_id), as_dict=True)[0]
+	notification.update(emp_advance_count)
+
+	'''
+	clearance_count = frappe.db.sql("""
+
+						""".format(), as_dict=True)
+	'''
+	
+	return notification
+

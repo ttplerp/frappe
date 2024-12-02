@@ -257,3 +257,39 @@
 		margin: 0;
 	}
 }
+/*
+.badge {
+	top: 0;
+	right: 0;
+	background-color: #ff9800;
+	color: white;
+	font-size: 12px;
+	padding: 3px 6px;
+	border-radius: 50%;
+} */
+
+.animated-button {
+	position: relative;
+	background-color: #4CAF50;
+	color: white;
+	border: none;
+	padding: 10px 20px;
+	font-size: 16px;
+	cursor: pointer;
+	border-radius: 5px;
+	animation: pulse 1s infinite alternate;
+}
+
+.animated-button:hover {
+	background-color: #45a049;
+}
+  
+.badge {
+	top: 0;
+	right: 0;
+	background-color: #f56f4e;
+	color: white;
+	font-size: 14px;
+	padding: 5px 8px;
+	border-radius: 70%;
+}
