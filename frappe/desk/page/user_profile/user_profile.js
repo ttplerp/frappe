@@ -73,37 +73,37 @@ class UserProfile {
 					user_id: this.user_id,
 				},
 				callback: function(r) {
-					console.log(r.message);
+					console.log(this.user_id);
 					let html = $(__(`
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/enote" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href='/app/enote?workflow_state=["not in", ["Approved", "Rejected"]]' class="link-content">
 								eNotes
 								<span class="badge">${r.message['enote_count']}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/expense-claim" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/expense-claim?docstatus=0" class="link-content">
 								Expense Claim
 								<span class="badge">${r.message.expense_count}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/leave-application" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/leave-application?docstatus=0" class="link-content">
 								Leave Application
 								<span class="badge">${r.message.leave_count}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-authorization" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-authorization?docstatus=0" class="link-content">
 								Travel Authorization
 								<span class="badge">${r.message.ta_count}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim?docstatus=0" class="link-content">
 								Travel Claim
 								<span class="badge">${r.message.tc_count}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/leave-encashment" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/leave-encashment?docstatus=0" class="link-content">
 								Leave Encashment
 								<span class="badge">${r.message.leave_encash_count}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/employee-benefits?docstatus=0" class="link-content">
 								Employee Benefit Claim
 								<span class="badge">${r.message.benefit_count}</span>
 							</a></div>
-							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/travel-claim" class="link-content">
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/employee-advance?docstatus=0" class="link-content">
 								Employee Advance
 								<span class="badge">${r.message.emp_advance_count}</span>
 							</a></div>
