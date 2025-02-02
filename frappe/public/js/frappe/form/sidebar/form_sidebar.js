@@ -37,6 +37,7 @@ frappe.ui.form.Sidebar = class {
 		this.bind_events();
 		this.setup_keyboard_shortcuts();
 		this.show_auto_repeat_status();
+		this.get_open_documents();
 		frappe.ui.form.setup_user_image_event(this.frm);
 
 		this.refresh();
@@ -56,7 +57,43 @@ frappe.ui.form.Sidebar = class {
 			});
 		});
 	}
+	//---------------------This section is for To Do List-----------------------------
+	get_open_documents() {
+		this.open_docs_config = {
+			ToDo: { label: __('To Do') },
+			Event: { label: __('Calendar'), route: 'List/Event/Calendar' }
+		};
+		frappe.ui.notifications.get_notification_config().then(r => {
+			// this.open_document_list = r;
+			this.$to_do_list = this.sidebar.find('.to-do-list');
 
+			var item_list = `<table class="table table-bordered small" style="margin: 0px 0px 10px 0px;">
+			<thead style="background-color: #2192be;">
+				<tr style="color:white;">
+					<th style="width: 80%" class="text-center">${__('Transaction')}</th>
+					<th style="width: 20%" class="text-center">${__('Count')}</th>
+				</tr>
+			</thead>`;
+			var open_docs = r.open_count_doctype;
+			var docstatus = 'docstatus=Draft'
+
+			for (const key in open_docs) {
+				if (open_docs[key] && key != 'Employee Checkin' && key != 'Employee PF' && key != 'Payroll Entry' && key != 'Salary Slip') {
+					const keyArr = key.split(" ")
+					const ref = keyArr.join("-").toLowerCase()
+					item_list += `<tr>
+					<td style="width: 80%"><span class="indicator red"></span>
+					<a class = "link-content" href="/app/${ref}?${docstatus}" target="_blank">${key}
+					</a></td>
+					<td class="text-center"><span class="badge" style="background: red; width: 20% color: white;">${open_docs[key]}</span></td>
+					</tr>`;
+				}
+			}
+			item_list += '</table>'
+			this.$to_do_list.html(item_list);
+		});
+	}
+	//-------------------------------End--------------------------------------------
 	setup_keyboard_shortcuts() {
 		// add assignment shortcut
 		let assignment_link = this.sidebar.find(".add-assignment");

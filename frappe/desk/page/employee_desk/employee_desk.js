@@ -70,10 +70,8 @@ class UserProfile {
 			ToDo: { label: __('To Do') },
 			Event: { label: __('Calendar'), route: 'List/Event/Calendar' }
 		};
-
 		frappe.ui.notifications.get_notification_config().then(r => {
 			// this.open_document_list = r;
-
 			this.$to_do_list = this.wrapper.find('.to-do-list');
 
 			var item_list = `<table class="table table-bordered small" style="margin: 0px 0px 10px 0px;">

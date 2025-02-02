@@ -15,6 +15,8 @@ frappe.views.ListSidebar = class ListSidebar {
 	}
 
 	make() {
+		let route = frappe.get_route();
+		this.user_id = route[1] || frappe.session.user;
 		var sidebar_content = frappe.render_template("list_sidebar", { doctype: this.doctype });
 
 		this.sidebar = $('<div class="list-sidebar overlay-sidebar hidden-xs hidden-sm"></div>')
@@ -23,6 +25,7 @@ frappe.views.ListSidebar = class ListSidebar {
 
 		this.setup_list_filter();
 		this.setup_list_group_by();
+		this.get_open_documents();
 
 		// do not remove
 		// used to trigger custom scripts
@@ -107,7 +110,43 @@ frappe.views.ListSidebar = class ListSidebar {
 			this.sidebar.find('.list-link[data-view="List"]').removeClass("hide");
 		}
 	}
+	//---------------------This section is for To Do List-----------------------------
+	get_open_documents() {
+		this.open_docs_config = {
+			ToDo: { label: __('To Do') },
+			Event: { label: __('Calendar'), route: 'List/Event/Calendar' }
+		};
+		frappe.ui.notifications.get_notification_config().then(r => {
+			// this.open_document_list = r;
+			this.$to_do_list = this.sidebar.find('.to-do-list');
 
+			var item_list = `<table class="table table-bordered small" style="margin: 0px 0px 10px 0px;">
+			<thead style="background-color: #2192be;">
+				<tr style="color:white;">
+					<th style="width: 80%" class="text-center">${__('Transaction')}</th>
+					<th style="width: 20%" class="text-center">${__('Count')}</th>
+				</tr>
+			</thead>`;
+			var open_docs = r.open_count_doctype;
+			var docstatus = 'docstatus=Draft'
+
+			for (const key in open_docs) {
+				if (open_docs[key] && key != 'Employee Checkin' && key != 'Employee PF' && key != 'Payroll Entry' && key != 'Salary Slip') {
+					const keyArr = key.split(" ")
+					const ref = keyArr.join("-").toLowerCase()
+					item_list += `<tr>
+					<td style="width: 80%"><span class="indicator red"></span>
+					<a class = "link-content" href="/app/${ref}?${docstatus}" target="_blank">${key}
+					</a></td>
+					<td class="text-center"><span class="badge" style="background: red; width: 20% color: white;">${open_docs[key]}</span></td>
+					</tr>`;
+				}
+			}
+			item_list += '</table>'
+			this.$to_do_list.html(item_list);
+		});
+	}
+	//-------------------------------End--------------------------------------------
 	setup_reports() {
 		// add reports linked to this doctype to the dropdown
 		var me = this;

@@ -22,8 +22,26 @@ $(document).ready(function () {
 			),
 		});
 	}
+	frappe.display_server_name()
 	frappe.start_app();
 });
+
+frappe.display_server_name = function(){
+	frappe.call({
+		method: 'frappe.client.get_value',
+		args: {
+			doctype: 'System Settings',
+			fieldname: ['is_development_server','text_to_display']
+		},
+		callback: function (r) {
+			if (parseFloat(r.message.is_development_server) == 1) {
+				$("#server_name").append(document.createTextNode(r.message.text_to_display))
+			}else{
+				$("#is_dev").css('display', 'none');
+			}
+		}
+	})
+}
 
 frappe.Application = class Application {
 	constructor() {
