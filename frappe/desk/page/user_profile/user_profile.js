@@ -142,9 +142,9 @@ class UserProfile {
 							<thead style="background-color: #2192be;">
 								<tr>
 									<th style="width: 20%">${__('Leave Type')}</th>
-									<!-- <th style="width: 20%" class="text-right">${__('Total Allocated Leaves')}</th> -->
+									<th style="width: 20%" class="text-right">${__('Total Allocated Leaves')}</th>
 									<th style="width: 20%" class="text-right">${__('Used Leaves')}</th>
-									<!-- <th style="width: 20%" class="text-right">${__('Pending Leaves')}</th> -->
+									<th style="width: 20%" class="text-right">${__('Pending Leaves')}
 									<th style="width: 20%" class="text-right">${__('Available Leaves')}</th>
 								</tr>
 							</thead>
@@ -155,9 +155,9 @@ class UserProfile {
 								html.append($(__(`
 										<tr>
 											<td>${key}</td>
-											<!-- <td class="text-right">${value["total_leaves"]}</td> -->
+											<td class="text-right">${value["total_leaves"]}</td>
 											<td class="text-right">${value["leaves_taken"]}</td>
-											<!== <td class="text-right">${value["pending_leaves"]}</td> -->
+											<td class="text-right">${value["pending_leaves"]}</td>
 											<td class="text-right">${value["remaining_leaves"]}</td>
 										</tr>
 								`)));
