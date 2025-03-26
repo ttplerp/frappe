@@ -613,7 +613,7 @@ def notification_action(user_id='tsheringom@bdb.bt'):
 	notification = {}
 	enote_count = frappe.db.sql("""
 						select count(distinct(e.name)) enote_count from `tabeNote` e
-						inner join `tabeNote Reviewer` r on e.name = r.parent
+						left join `tabeNote Reviewer` r on e.name = r.parent
 						where e.docstatus=0 
 						and (
 								(e.forward_to="{user}" and e.workflow_state = "Pending")

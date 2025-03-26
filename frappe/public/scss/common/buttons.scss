@@ -90,6 +90,11 @@
 	--icon-fill-bg: var(--primary);
 }
 
+.btn.btn-success {
+	background-color: rgb(85, 197, 85);
+	color: $white;
+}
+
 .btn.btn-danger {
 	background-color: var(--red-400);
 	color: $white;
