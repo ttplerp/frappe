@@ -107,6 +107,10 @@ class UserProfile {
 								Employee Advance
 								<span class="badge">${r.message.emp_advance_count}</span>
 							</a></div>
+							<div class="edesk-link-item" type="doctype"><span class="indicator blue"></span> <a href="/app/internal-clearance?docstatus=0" class="link-content">
+								Internal Clearance
+								<span class="badge">${r.message.clearance_count}</span>
+							</a></div>
 					`));
 					$activity_dashboard.append(html);
 				}

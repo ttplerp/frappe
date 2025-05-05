@@ -679,11 +679,21 @@ def notification_action(user_id='tsheringom@bdb.bt'):
 						""".format(user=user_id), as_dict=True)[0]
 	notification.update(emp_advance_count)
 
-	'''
 	clearance_count = frappe.db.sql("""
-
-						""".format(), as_dict=True)
-	'''
+							select count(*) as clearance_count from `tabInternal Clearance`
+							where docstatus=0
+							and workflow_state not in ("Draft","Rejected")
+                            and (
+                                (INSTR(iad, '{user}') > 0 and iad_clearance=0) 
+                                or 
+                                (INSTR(afd, '{user}') > 0 and afd_clearance=0)
+                                or
+                                (INSTR(icthr, '{user}') > 0 and icthr_clearance=0)
+                                or 
+                                (INSTR(ictcr, '{user}') > 0 and ictcr_clearance=0)
+                                )
+						""".format(user=user_id), as_dict=True)[0]
 	
+	notification.update(clearance_count)
 	return notification
 
