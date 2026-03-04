@@ -23,6 +23,8 @@
   "send_welcome_email",
   "unsubscribed",
   "user_image",
+  "ip_number",
+  "mobile_no",
   "sb1",
   "role_profile_name",
   "roles_html",
@@ -39,7 +41,6 @@
   "bio",
   "mute_sounds",
   "column_break_22",
-  "mobile_no",
   "change_password",
   "new_password",
   "logout_all_sessions",
@@ -188,7 +189,8 @@
   {
    "fieldname": "time_zone",
    "fieldtype": "Select",
-   "label": "Time Zone"
+   "label": "Time Zone",
+   "read_only": 1
   },
   {
    "description": "Get your globally recognized avatar from Gravatar.com",
@@ -679,6 +681,11 @@
    "fieldtype": "Attach Image",
    "label": "Signature",
    "no_copy": 1
+  },
+  {
+   "fieldname": "ip_number",
+   "fieldtype": "Data",
+   "label": "IP Number"
   }
  ],
  "icon": "fa fa-user",
@@ -741,7 +748,7 @@
    "link_fieldname": "user"
   }
  ],
- "modified": "2024-11-10 10:13:46.463006",
+ "modified": "2026-03-04 12:03:47.572034",
  "modified_by": "Administrator",
  "module": "Core",
  "name": "User",

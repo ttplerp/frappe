@@ -99,6 +99,16 @@ class User(Document):
 		if (self.name not in ["Administrator", "Guest"]) and (not self.get_social_login_userid("frappe")):
 			self.set_social_login_userid("frappe", frappe.generate_hash(length=39))
 
+		if self.ip_number != frappe.db.get_value("User", self.name, "ip_number"):
+			emp_id = frappe.db.get_value("Employee", {"user_id": self.name}, "name")
+			if emp_id:
+				frappe.db.set_value("Employee", emp_id, "ip_number", self.ip_number, update_modified=True)
+			
+		if self.mobile_no != frappe.db.get_value("User", self.name, "mobile_no"):
+			emp_id = frappe.db.get_value("Employee", {"user_id": self.name}, "name")
+			if emp_id:
+				frappe.db.set_value("Employee", emp_id, "cell_number", self.mobile_no, update_modified=True)
+
 	def populate_role_profile_roles(self):
 		if self.role_profile_name:
 			role_profile = frappe.get_doc("Role Profile", self.role_profile_name)
