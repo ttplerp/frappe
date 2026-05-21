@@ -665,7 +665,8 @@ ALLOWED_FIELDTYPE_CHANGE = (
 	("Text", "Small Text"),
 	("Text", "Data", "Barcode"),
 	("Code", "Geolocation"),
+	("Link", "Select"),
 	("Table", "Table MultiSelect"),
 )
 
-ALLOWED_OPTIONS_CHANGE = ("Read Only", "HTML", "Data")
+ALLOWED_OPTIONS_CHANGE = ("Read Only", "HTML", "Data", "Link", "Select")
