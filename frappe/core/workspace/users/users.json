@@ -145,7 +145,7 @@
    "type": "Link"
   }
  ],
- "modified": "2023-01-13 10:59:15.889305",
+ "modified": "2024-04-22 15:07:29.174836",
  "modified_by": "Administrator",
  "module": "Core",
  "name": "Users",
@@ -155,7 +155,7 @@
  "quick_lists": [],
  "restrict_to_domain": "",
  "roles": [],
- "sequence_id": 20.0,
+ "sequence_id": 24.0,
  "shortcuts": [
   {
    "label": "User",

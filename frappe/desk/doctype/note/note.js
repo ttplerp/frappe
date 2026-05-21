@@ -37,6 +37,9 @@ frappe.ui.form.on("Note", {
 		// set flag for toggle
 		frm.is_note_editable = editable;
 	},
+	content: function(frm){
+		console.log("Hello");
+	},
 });
 
 frappe.tour["Note"] = [
