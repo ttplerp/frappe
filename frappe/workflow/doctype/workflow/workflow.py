@@ -60,8 +60,17 @@ class Workflow(Document):
 					),
 					(d.state, d.doc_status),
 				)
+				# frappe.db.sql(
+				# 	f"""
+				# 	UPDATE `tab{self.document_type}`
+				# 	SET `{self.workflow_state_field}` = %s
+				# 	WHERE ifnull(`{self.workflow_state_field}`, '') = ''
+				# 	AND `docstatus` = %s
+				# """,
+				# 	(d.state, d.doc_status),
+				# )
 
-				docstatus_map[d.doc_status] = d.state
+				# docstatus_map[d.doc_status] = d.state
 
 	def update_doc_status(self):
 		"""
