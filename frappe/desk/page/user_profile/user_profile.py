@@ -29,8 +29,10 @@ def get_employee_info(user=None, checkin_type=None, half_day=None):
 				select e.name as employee, e.employee_name, e.department, 'General Shift' as shift_type,
 				e.division, e.section, e.designation, e.branch
 				from `tabEmployee` e
-				where e.user_id = "{3}"
+				where e.user_id = "{3}" and e.status = 'Active'
 	""".format(time, date, str(date.day), user), as_dict=True)
+	if not emp:
+		frappe.throw("Employee Status is Inactive. Please inform HR.")
 	# frappe.throw(str(emp))
  
 	leave = frappe.db.sql("""
@@ -204,6 +206,12 @@ def get_pending_leaves_for_period(employee, leave_type, from_date, to_date):
 			"to_date": ["between", (from_date, to_date)]
 		}, fields=['SUM(total_leave_days) as leaves'])[0]
 	return leaves['leaves'] if leaves['leaves'] else 0.0
+
+def skip_expiry_leaves(leave_entry, to_date):
+	''' Returns True if the leave entry is expired and to_date is greater than expiry date '''
+	if leave_entry.is_expired and leave_entry.to_date < getdate(to_date):
+		return True
+	return False
 
 def get_leaves_for_period(employee, leave_type, from_date, to_date, do_not_skip_expired_leaves=False):
 	leave_entries = get_leave_entries(employee, leave_type, from_date, to_date)
@@ -635,7 +643,7 @@ def notification_action(user_id='tsheringom@bdb.bt'):
 						select count(*) tc_count from `tabTravel Claim`
 						where docstatus=0
 						and supervisor = "{user}" 
-						and workflow_state not in ("Draft","Rejected","Approved")		
+						and workflow_state not in ("Not Eligible","Draft","Rejected","Approved")		
 					""".format(user=user_id), as_dict=True)[0]
 	notification.update(tc_count)
 	

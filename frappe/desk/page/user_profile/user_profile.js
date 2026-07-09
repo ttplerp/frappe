@@ -49,9 +49,9 @@ class UserProfile {
 		this.make_activty_dashboard();
 		if(this.user_id != "Administrator"){
 			this.employee_leave_dashboard();
-			this.create_attendance_dashboard_filters();
-			this.employee_attendance_dashboard(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
-			"December"][frappe.datetime.str_to_obj(frappe.datetime.get_today()).getMonth()]);
+			// this.create_attendance_dashboard_filters();
+			// this.employee_attendance_dashboard(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+			// "December"][frappe.datetime.str_to_obj(frappe.datetime.get_today()).getMonth()]);
 			this.checkin_info();
 		}
 		this.setup_punching_button();
@@ -150,7 +150,7 @@ class UserProfile {
 											<td>${key}</td>
 											<!-- <td class="text-right">${value["total_leaves"]}</td> -->
 											<td class="text-right">${value["leaves_taken"]}</td>
-											<!== <td class="text-right">${value["pending_leaves"]}</td> -->
+											<!-- <td class="text-right">${value["pending_leaves"]}</td> -->
 											<td class="text-right">${value["remaining_leaves"]}</td>
 										</tr>
 								`)));
