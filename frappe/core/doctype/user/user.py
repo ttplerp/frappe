@@ -1067,7 +1067,7 @@ def throttle_user_creation():
         return
 
     if frappe.db.get_creation_count("User", 60) > frappe.local.conf.get("throttle_user_limit", 60):
-        frappe.throw(_("Throttled"))
+        pass #frappe.throw(_("Throttled"))
 
 
 @frappe.whitelist()
