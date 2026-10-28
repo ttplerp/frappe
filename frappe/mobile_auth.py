@@ -8,23 +8,26 @@ from frappe.mobile_auth_util import (
 )
 
 @frappe.whitelist(allow_guest=True)
-def request_otp(username, phone):
+def request_otp(username, phone, is_phone=True):
     check_rate_limit(username)
-
     phone = strip_phone(phone)
+    data = {
+            "name": username.strip(),
+            "enabled": 1
+            }
+    if is_phone:
+        data["phone"] = phone
+    else:
+        data["email"] = phone
 
     user = frappe.db.get_value(
         "User",
-        {
-            "name": username,
-            "phone": phone,
-            "enabled": 1
-        },
+        data,
         "name"
     )
 
     if not user:
-        frappe.throw("Invalid username or phone number")
+        frappe.throw("Invalid username/phone/email")
 
     frappe.db.sql("""
         UPDATE `tabLogin OTP`
@@ -45,12 +48,18 @@ def request_otp(username, phone):
         "docstatus" : 1
     }).insert(ignore_permissions=True)
 
-    # send_sms(phone, f"Your OTP is {otp}")
-    frappe.call(
-        "erpnext.custom_utils.queue_sms",
-        mobile=phone,
-        message="Your OTP is " + str(otp)
-        )
+    if is_phone:
+        frappe.call(
+            "erpnext.custom_utils.queue_sms",
+            mobile=phone,
+            message="Your OTP is " + str(otp)
+            )
+    else:
+        frappe.sendmail(
+                recipients=[phone],
+                subject="OTP for Desung App",
+                message="Your OTP is " + str(otp),
+                )
 
     return {"message": "OTP sent successfully"}
 

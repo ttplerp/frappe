@@ -28,5 +28,5 @@ def generate_otp():
 
 
 def strip_phone(phone):
-    return phone.removeprefix("+975").removeprefix("975")
+    return phone.strip().removeprefix("+975").removeprefix("975")
 
