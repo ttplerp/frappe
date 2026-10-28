@@ -59,6 +59,7 @@ def request_otp(username, phone, is_phone=True):
                 recipients=[phone],
                 subject="OTP for Desung App",
                 message="Your OTP is " + str(otp),
+                sender="dns2@desuung.org.bt",
                 )
 
     return {"message": "OTP sent successfully"}
