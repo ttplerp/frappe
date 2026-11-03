@@ -1,5 +1,6 @@
 import frappe
 from datetime import timedelta
+from frappe.sessions import clear_sessions
 from frappe.mobile_auth_util import (
     check_rate_limit,
     generate_otp,
@@ -110,3 +111,13 @@ def verify_otp(username, phone, otp):
         "user": username
     }
 
+@frappe.whitelist(methods=["POST"])
+def logout():
+    user = frappe.session.user
+    if user == "Guest":
+        frappe.throw(_("Not logged in"), frappe.AuthenticationError)
+    user_doc = frappe.get_doc("User", user)
+    user_doc.api_secret = frappe.generate_hash(length=15)
+    user_doc.save(ignore_permissions=True, ignore_version=True)
+    clear_sessions(user=user, keep_current=False, force=True)
+    return {"message": "Logged out"}
