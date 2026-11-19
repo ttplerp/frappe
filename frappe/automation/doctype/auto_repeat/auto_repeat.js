@@ -27,6 +27,11 @@ frappe.ui.form.on("Auto Repeat", {
 		};
 	},
 
+	onload: function(frm) {
+		frm.ignore_doctypes_on_cancel_all = ["Purchase Order"];
+
+	},
+ 
 	refresh: function (frm) {
 		// auto repeat message
 		if (frm.is_new()) {

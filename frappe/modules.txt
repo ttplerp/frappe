@@ -11,3 +11,4 @@ Contacts
 Social
 Automation
 Event Streaming
+Your Custom Module Name
